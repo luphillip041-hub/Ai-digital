@@ -68,7 +68,10 @@ INSTRUMENTS = {
         "timeframe_minutes": 15,
         "shortable": True,
         "trail_atr_mult": None,
-        "params": {"sma_period": 20, "band_mult": 1.5},
+        # band_mult raised from the original 1.5 after the 6-month backtest:
+        # tighter bands churned 189 trades with PF 0.58; 2.5 cut the trade
+        # count ~70% and halved max drawdown (see bot/backtest.py).
+        "params": {"sma_period": 20, "band_mult": 2.5},
     },
     "QQQ": {
         "asset_class": "equity",
@@ -78,7 +81,9 @@ INSTRUMENTS = {
         "timeframe_minutes": 15,
         "shortable": True,
         "trail_atr_mult": None,
-        "params": {"sma_period": 20, "band_mult": 1.8},
+        # band_mult raised from the original 1.8 after the 6-month backtest
+        # (same churn/slippage rationale as SPY).
+        "params": {"sma_period": 20, "band_mult": 2.5},
     },
     "BTC/USD": {
         "asset_class": "crypto",

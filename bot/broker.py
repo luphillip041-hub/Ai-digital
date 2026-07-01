@@ -105,14 +105,7 @@ class Broker:
                 adjustment="raw", feed=config.ALPACA_DATA_FEED,
             ).df
 
-        if df is None or df.empty:
-            return pd.DataFrame(columns=BAR_COLUMNS)
-
-        # Multi-symbol responses carry a 'symbol' column — filter just in case.
-        if "symbol" in df.columns:
-            df = df[df["symbol"] == symbol]
-
-        df = df[BAR_COLUMNS].sort_index()
+        df = self._normalize_bars(df, symbol)
 
         # Drop the in-progress bar: anything at/after the current period start.
         epoch_min = int(now.timestamp() // 60)
@@ -121,6 +114,29 @@ class Broker:
         )
         df = df[df.index < period_start]
         return df
+
+    @staticmethod
+    def _normalize_bars(df, symbol: str) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame(columns=BAR_COLUMNS)
+        # Multi-symbol responses carry a 'symbol' column — filter just in case.
+        if "symbol" in df.columns:
+            df = df[df["symbol"] == symbol]
+        return df[BAR_COLUMNS].sort_index()
+
+    def get_bars_range(self, instrument_cfg: dict, start_iso: str,
+                       end_iso: str, limit: int = 50000) -> pd.DataFrame:
+        """Historical OHLCV bars between two timestamps (for backtesting)."""
+        tf = self._timeframe(instrument_cfg["timeframe_minutes"])
+        symbol = instrument_cfg["data_symbol"]
+        if instrument_cfg["asset_class"] == "crypto":
+            df = self._call(self.api.get_crypto_bars, symbol, tf,
+                            start=start_iso, end=end_iso, limit=limit).df
+        else:
+            df = self._call(self.api.get_bars, symbol, tf,
+                            start=start_iso, end=end_iso, limit=limit,
+                            adjustment="raw", feed=config.ALPACA_DATA_FEED).df
+        return self._normalize_bars(df, symbol)
 
     def get_latest_price(self, instrument_cfg: dict) -> Optional[float]:
         symbol = instrument_cfg["data_symbol"]

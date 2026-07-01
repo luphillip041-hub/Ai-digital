@@ -10,8 +10,8 @@ three strategy modules and unified ATR-based risk management.
 
 | Instrument | Strategy | Timeframe | Rules |
 |---|---|---|---|
-| SPY | Mean Reversion | 15 min | Long < SMA20 − 1.5σ, short > SMA20 + 1.5σ, exit at SMA |
-| QQQ | Mean Reversion | 15 min | Same, with 1.8σ bands |
+| SPY | Mean Reversion | 15 min | Long < SMA20 − 2.5σ, short > SMA20 + 2.5σ, exit at SMA |
+| QQQ | Mean Reversion | 15 min | Same, 2.5σ bands |
 | BTC/USD | Momentum Breakout | 1 hour | Break of 20-bar high/low with volume ≥ 1.5× 20-bar avg; 2×ATR trail |
 | GLD | Trend Following | 4 hour | 50/200 EMA cross; 3×ATR trail |
 | USO | Trend Following | 4 hour | 50/200 EMA cross; 3×ATR trail |
@@ -21,8 +21,10 @@ three strategy modules and unified ATR-based risk management.
 - **ATR sizing:** 14-period ATR; qty = (1% of equity) / ATR, so a 1-ATR
   adverse move always costs exactly 1% of equity — quiet instruments get
   bigger positions, volatile ones smaller.
-- **Hard stop:** every trade is cut at a 1%-of-equity loss (a 1-ATR move,
-  given the sizing rule). No exceptions.
+- **Hard stop:** every trade is cut at a 1%-of-equity loss. When sizing is
+  unconstrained this is a 1-ATR move; when the notional cap or share
+  rounding shrinks the position, the stop distance widens so the dollar
+  risk stays exactly 1%. No exceptions.
 - **Trailing stops:** 2×ATR on BTC/USD, 3×ATR on GLD/USO, ratcheted each
   completed bar; only ever tighten.
 - **Correlation filter:** if SPY **and** QQQ are both long, new BTC/USD
@@ -61,6 +63,19 @@ timestamp, instrument, direction, entry, exit, P&L, size), `daily_pnl.csv`
 (date, realized P&L, equity, written at UTC midnight), `bot_state.json`
 (open positions — survives restarts and is reconciled against the broker on
 startup), `bot.log`.
+
+## Backtesting
+
+```bash
+python -m bot.backtest --months 6
+```
+
+Replays the live strategy classes and risk manager over Alpaca historical
+data (0.05% slippage per fill, $0 commission), prints per-instrument and
+combined-portfolio stats (trades, win rate, profit factor, max drawdown,
+Sharpe, return), saves an equity-curve chart to `backtest_results.png`,
+and flags any strategy with negative Sharpe or drawdown beyond −15%.
+Exit code is 2 when flags exist, 0 when clean.
 
 ## Behavior notes
 

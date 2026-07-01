@@ -230,7 +230,8 @@ class TradingBot:
                          "tracked", key)
             return
 
-        hard_stop = self.risk.hard_stop_price(fill, atr, direction)
+        stop_distance = self.risk.hard_stop_distance(equity, qty, atr)
+        hard_stop = self.risk.hard_stop_price(fill, stop_distance, direction)
         self.portfolio.open_position(
             symbol=key, direction=direction, qty=qty, entry_price=fill,
             atr=atr, hard_stop=hard_stop,

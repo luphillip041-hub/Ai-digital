@@ -65,11 +65,24 @@ class RiskManager:
     # ------------------------------------------------------------------
     # Stops
     # ------------------------------------------------------------------
-    def hard_stop_price(self, entry_price: float, atr: float, direction: str) -> float:
-        """1-ATR from entry == 1% of equity loss given our sizing rule."""
+    def hard_stop_distance(self, equity: float, qty: float, atr: float) -> float:
+        """Price distance at which the loss equals HARD_STOP_EQUITY_FRACTION
+        (1%) of equity for this position size.
+
+        Equals exactly 1 ATR when sizing was unconstrained (qty = 1% equity
+        / ATR). When the notional cap or whole-share rounding shrank the
+        position, the distance widens so the dollar risk stays 1% of equity
+        — the stop is defined in equity terms, not ATR terms.
+        """
+        if qty <= 0:
+            return atr
+        return max(atr, equity * config.HARD_STOP_EQUITY_FRACTION / qty)
+
+    def hard_stop_price(self, entry_price: float, stop_distance: float,
+                        direction: str) -> float:
         if direction == "long":
-            return entry_price - atr
-        return entry_price + atr
+            return entry_price - stop_distance
+        return entry_price + stop_distance
 
     def update_trailing_stop(self, position: Position, latest_atr: float) -> None:
         """Ratchet the trailing stop after each completed bar.
