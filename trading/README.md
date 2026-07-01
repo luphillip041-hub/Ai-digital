@@ -1,10 +1,11 @@
-# mltrader — ML trading system on the Alpaca API
+# mltrader — ML trading bot with dashboard, on the Alpaca API
 
-A machine-learning trading system: it fetches daily bars from Alpaca, engineers
+A machine-learning trading bot: it fetches daily bars from Alpaca, engineers
 technical features, trains a gradient-boosted classifier to estimate the
 probability that a symbol closes up tomorrow, validates the strategy with a
 walk-forward backtest, and rebalances an Alpaca **paper** account from the
-resulting signals.
+resulting signals. A web dashboard shows live signals, account state, and the
+walk-forward equity curve, and can trigger rebalances.
 
 ## How it works
 
@@ -30,6 +31,13 @@ Alpaca daily bars ──▶ features.py ──▶ model.py (HistGradientBoosting
 - **`risk.py`** — converts signals into target weights with per-symbol and
   gross-exposure caps, then diffs against current holdings into orders.
 - **`broker.py`** — thin Alpaca `TradingClient` wrapper, paper mode by default.
+- **`engine.py`** — shared signal/rebalance pipeline used by the CLI, the bot
+  loop, and the server.
+- **`server.py` + `web/index.html`** — FastAPI dashboard: stat tiles, the
+  walk-forward equity curve vs buy & hold, per-symbol signal bars against the
+  entry threshold, positions, and a rebalance button (dry-run by default).
+  Without API keys it runs in a synthetic-data demo mode; with keys it shows
+  the real paper account.
 
 ## Setup
 
@@ -57,10 +65,16 @@ python -m mltrader.cli trade
 
 # Account equity and open positions
 python -m mltrader.cli status
+
+# Web dashboard — http://127.0.0.1:8000 (works without keys in demo mode)
+python -m mltrader.cli serve --port 8000
+
+# Long-running bot: one rebalance per market day, retries through API errors
+python -m mltrader.cli bot
 ```
 
-Run `trade` once per day near the close (e.g. via cron) — the model is built
-on daily bars, so more frequent runs add cost without adding signal.
+The bot and the `trade` command rebalance on daily bars — the model is built
+on daily data, so more frequent runs add cost without adding signal.
 
 ## Tests
 

@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mltrader — dashboard</title>
+<style>
+  :root {
+    --page:           #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;   /* strategy */
+    --series-2:       #1baf7a;   /* benchmark */
+    --delta-good:     #006300;
+    --delta-bad:      #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:           #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #199e70;
+      --delta-good:     #0ca30c;
+      --delta-bad:      #d03b3b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 24px 48px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  header h1 { font-size: 20px; font-weight: 650; margin: 0; }
+  .badge {
+    font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--text-secondary); background: var(--surface-1);
+  }
+  .badge.live { color: var(--delta-bad); border-color: var(--delta-bad); }
+  header .sub { color: var(--text-muted); font-size: 13px; }
+  .controls {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 14px 0 18px;
+  }
+  .controls label { color: var(--text-secondary); font-size: 13px; }
+  select, button {
+    font: inherit; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--baseline); }
+  button.primary { font-weight: 600; }
+  .checkline { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; }
+  .msg { color: var(--text-muted); font-size: 13px; margin-left: auto; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  .tile .label { font-size: 12px; color: var(--text-secondary); }
+  .tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
+  .tile .delta { font-size: 12px; margin-top: 2px; color: var(--text-muted); }
+  .tile .delta.good { color: var(--delta-good); }
+  .tile .delta.bad  { color: var(--delta-bad); }
+
+  .cards { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+  .row2 { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; }
+  @media (max-width: 800px) { .row2 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; position: relative;
+  }
+  .card h2 { font-size: 14px; font-weight: 650; margin: 0 0 2px; }
+  .card .hint { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .legend .key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  svg text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--text-muted); }
+  svg .val { fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  svg .endlabel { fill: var(--text-secondary); font-weight: 600; }
+  .refreshing { opacity: .6; transition: opacity .2s; }
+
+  .tooltip {
+    position: absolute; pointer-events: none; display: none; z-index: 10;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+    min-width: 150px;
+  }
+  .tooltip .tdate { color: var(--text-muted); margin-bottom: 4px; }
+  .tooltip .trow { display: flex; align-items: center; gap: 6px; }
+  .tooltip .tkey { width: 12px; border-top: 2px solid; border-radius: 2px; }
+  .tooltip .tval { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tooltip .tname { color: var(--text-secondary); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 10px 0; }
+  details { margin-top: 10px; }
+  summary { font-size: 12px; color: var(--text-muted); cursor: pointer; }
+  details table { margin-top: 8px; }
+  .chip { font-size: 11px; font-weight: 650; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); }
+  .chip.long { color: var(--delta-good); border-color: var(--delta-good); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>mltrader</h1>
+    <span class="badge" id="modeBadge">…</span>
+    <span class="sub" id="marketState"></span>
+  </header>
+  <div class="sub" style="color:var(--text-muted); font-size:13px;">
+    ML signal bot on the Alpaca API — walk-forward validated, long/flat.
+  </div>
+
+  <div class="controls">
+    <label for="symbolSel">Backtest symbol</label>
+    <select id="symbolSel"></select>
+    <button id="refreshBtn">Refresh</button>
+    <button id="rebalanceBtn" class="primary">Rebalance</button>
+    <span class="checkline"><input type="checkbox" id="sendOrders" disabled>
+      <label for="sendOrders">send orders (paper)</label></span>
+    <span class="msg" id="statusMsg"></span>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="cards">
+    <div class="card" id="equityCard">
+      <h2>Walk-forward equity curve</h2>
+      <p class="hint" id="equityHint">Out-of-sample growth of $1, after costs.</p>
+      <div class="legend">
+        <span><span class="key" style="border-color:var(--series-1)"></span>Strategy</span>
+        <span><span class="key" style="border-color:var(--series-2)"></span>Buy &amp; hold</span>
+      </div>
+      <div id="equityChart"></div>
+      <div class="tooltip" id="equityTip"></div>
+      <details><summary>Table view</summary><div id="equityTable"></div></details>
+    </div>
+
+    <div class="row2">
+      <div class="card" id="signalsCard">
+        <h2>Model signals — P(next day up)</h2>
+        <p class="hint" id="signalsHint"></p>
+        <div id="signalsChart"></div>
+        <div class="tooltip" id="signalsTip"></div>
+        <details><summary>Table view</summary><div id="signalsTable"></div></details>
+      </div>
+      <div class="card">
+        <h2>Positions</h2>
+        <p class="hint">Current holdings in the account.</p>
+        <div id="positions"></div>
+        <h2 style="margin-top:16px;">Last rebalance</h2>
+        <div id="orders"><div class="empty">No rebalance run yet this session.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const state = { summary: null, signals: null, backtest: null, symbol: null };
+
+const fmtMoney = v => "$" + v.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const fmtMoneyCompact = v =>
+  v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" :
+  v >= 1e5 ? "$" + (v / 1e3).toFixed(1) + "K" : fmtMoney(v);
+const fmtPct = (v, signed) => ((signed && v >= 0) ? "+" : "") + (v * 100).toFixed(1) + "%";
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+async function fetchJSON(url, options) {
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  return res.json();
+}
+
+/* ---------- stat tiles ---------- */
+function renderTiles() {
+  const box = $("tiles");
+  box.replaceChildren();
+  const m = state.backtest ? state.backtest.metrics : null;
+  const tiles = [
+    { label: "Account equity", value: state.summary ? fmtMoneyCompact(state.summary.equity) : "—" },
+    m && { label: "Strategy return (OOS)", value: fmtPct(m.total_return, true),
+           delta: fmtPct(m.total_return - m.benchmark_return, true) + " vs buy & hold",
+           good: m.total_return >= m.benchmark_return },
+    m && { label: "Sharpe", value: m.sharpe.toFixed(2) },
+    m && { label: "Max drawdown", value: fmtPct(m.max_drawdown) },
+    m && { label: "Hit rate", value: fmtPct(m.hit_rate) },
+    m && { label: "Time in market", value: fmtPct(m.exposure) },
+  ].filter(Boolean);
+  for (const t of tiles) {
+    const tile = el("div", "tile");
+    tile.append(el("div", "label", t.label), el("div", "value", t.value));
+    if (t.delta) tile.append(el("div", "delta " + (t.good ? "good" : "bad"), t.delta));
+    box.append(tile);
+  }
+}
+
+/* ---------- equity line chart ---------- */
+function niceTicks(min, max, count) {
+  const span = max - min || 1, step0 = span / count, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 5, 10].map(s => s * mag).find(s => span / s <= count) || 10 * mag;
+  const ticks = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+
+function renderEquity() {
+  const host = $("equityChart"), bt = state.backtest;
+  host.replaceChildren();
+  if (!bt) { host.append(el("div", "empty", "Loading backtest…")); return; }
+
+  const W = host.clientWidth || 900, H = 260, padL = 44, padR = 130, padT = 8, padB = 24;
+  const n = bt.dates.length;
+  const all = bt.strategy.concat(bt.benchmark);
+  const yMin = Math.min(...all), yMax = Math.max(...all);
+  const x = i => padL + (W - padL - padR) * (n === 1 ? 0 : i / (n - 1));
+  const y = v => padT + (H - padT - padB) * (1 - (v - yMin) / (yMax - yMin || 1));
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", "100%");
+  const put = (name, attrs, text) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (const k in attrs) node.setAttribute(k, attrs[k]);
+    if (text !== undefined) node.textContent = text;
+    svg.append(node); return node;
+  };
+
+  for (const t of niceTicks(yMin, yMax, 4)) {
+    put("line", { x1: padL, x2: W - padR, y1: y(t), y2: y(t), stroke: css("--grid"), "stroke-width": 1 });
+    put("text", { x: padL - 6, y: y(t) + 3, "text-anchor": "end", class: "val" }, t.toFixed(2) + "×");
+  }
+  const dateIdx = [0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1];
+  for (const i of dateIdx)
+    put("text", { x: x(i), y: H - 6, "text-anchor": i === 0 ? "start" : i === n - 1 ? "end" : "middle" }, bt.dates[i]);
+
+  const path = arr => arr.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1)).join("");
+  put("path", { d: path(bt.benchmark), fill: "none", stroke: css("--series-2"), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  put("path", { d: path(bt.strategy), fill: "none", stroke: css("--series-1"), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+
+  // direct end labels; nudge apart if they collide
+  let ys = y(bt.strategy[n - 1]), yb = y(bt.benchmark[n - 1]);
+  if (Math.abs(ys - yb) < 14) { const mid = (ys + yb) / 2, dir = ys <= yb ? 1 : -1; ys = mid - 7 * dir; yb = mid + 7 * dir; }
+  put("text", { x: W - padR + 8, y: ys + 3, class: "endlabel" }, bt.strategy[n - 1].toFixed(2) + "× strategy");
+  put("text", { x: W - padR + 8, y: yb + 3, class: "endlabel" }, bt.benchmark[n - 1].toFixed(2) + "× buy & hold");
+
+  // crosshair + tooltip
+  const hair = put("line", { y1: padT, y2: H - padB, stroke: css("--baseline"), "stroke-width": 1, visibility: "hidden" });
+  const dotS = put("circle", { r: 4, fill: css("--series-1"), stroke: css("--surface-1"), "stroke-width": 2, visibility: "hidden" });
+  const dotB = put("circle", { r: 4, fill: css("--series-2"), stroke: css("--surface-1"), "stroke-width": 2, visibility: "hidden" });
+  const tip = $("equityTip"), card = $("equityCard");
+  svg.addEventListener("pointermove", ev => {
+    const box = svg.getBoundingClientRect();
+    const px = (ev.clientX - box.left) * (W / box.width);
+    const i = Math.max(0, Math.min(n - 1, Math.round((px - padL) / ((W - padL - padR) / (n - 1)))));
+    hair.setAttribute("x1", x(i)); hair.setAttribute("x2", x(i)); hair.setAttribute("visibility", "visible");
+    dotS.setAttribute("cx", x(i)); dotS.setAttribute("cy", y(bt.strategy[i])); dotS.setAttribute("visibility", "visible");
+    dotB.setAttribute("cx", x(i)); dotB.setAttribute("cy", y(bt.benchmark[i])); dotB.setAttribute("visibility", "visible");
+    tip.replaceChildren(el("div", "tdate", bt.dates[i]));
+    for (const [name, arr, colorVar] of [["Strategy", bt.strategy, "--series-1"], ["Buy & hold", bt.benchmark, "--series-2"]]) {
+      const row = el("div", "trow");
+      const key = el("span", "tkey"); key.style.borderColor = css(colorVar);
+      row.append(key, el("span", "tval", arr[i].toFixed(3) + "×"), el("span", "tname", name));
+      tip.append(row);
+    }
+    const cardBox = card.getBoundingClientRect();
+    tip.style.display = "block";
+    tip.style.left = Math.min(ev.clientX - cardBox.left + 14, cardBox.width - 180) + "px";
+    tip.style.top = (ev.clientY - cardBox.top + 14) + "px";
+  });
+  svg.addEventListener("pointerleave", () => {
+    tip.style.display = "none";
+    for (const nd of [hair, dotS, dotB]) nd.setAttribute("visibility", "hidden");
+  });
+  host.append(svg);
+
+  // table view twin (quarterly samples + final)
+  const tbl = el("table"); const head = el("tr");
+  for (const h of ["Date", "Strategy", "Buy & hold"]) head.append(el("th", h === "Date" ? "" : "num", h));
+  tbl.append(head);
+  const step = Math.max(1, Math.floor(n / 16));
+  for (let i = 0; i < n; i += step) {
+    const tr = el("tr");
+    tr.append(el("td", "", bt.dates[i]), el("td", "num", bt.strategy[i].toFixed(3) + "×"), el("td", "num", bt.benchmark[i].toFixed(3) + "×"));
+    tbl.append(tr);
+  }
+  $("equityTable").replaceChildren(tbl);
+  $("equityHint").textContent =
+    `Out-of-sample growth of $1 for ${bt.symbol}, after costs — ${bt.metrics.days} trading days, rolling retrain.`;
+}
+
+/* ---------- signals bar chart ---------- */
+function renderSignals() {
+  const host = $("signalsChart"), sig = state.signals;
+  host.replaceChildren();
+  if (!sig) { host.append(el("div", "empty", "Loading signals…")); return; }
+
+  const rows = sig.signals, rowH = 30, barH = 20;
+  const W = host.clientWidth || 520, padL = 56, padR = 48, padT = 16, padB = 20;
+  const H = padT + rows.length * rowH + padB;
+  const x = v => padL + (W - padL - padR) * v;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", "100%");
+  const put = (name, attrs, text) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (const k in attrs) node.setAttribute(k, attrs[k]);
+    if (text !== undefined) node.textContent = text;
+    svg.append(node); return node;
+  };
+
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    put("line", { x1: x(t), x2: x(t), y1: padT, y2: H - padB, stroke: css("--grid"), "stroke-width": 1 });
+    put("text", { x: x(t), y: H - 6, "text-anchor": "middle", class: "val" }, t.toFixed(2));
+  }
+  // threshold hairline
+  put("line", { x1: x(sig.threshold), x2: x(sig.threshold), y1: padT - 4, y2: H - padB, stroke: css("--baseline"), "stroke-width": 1 });
+  put("text", { x: x(sig.threshold), y: padT - 6, "text-anchor": "middle" }, "entry " + sig.threshold.toFixed(2));
+
+  const tip = $("signalsTip"), card = $("signalsCard");
+  rows.forEach((r, i) => {
+    const yTop = padT + i * rowH + (rowH - barH) / 2;
+    put("text", { x: padL - 8, y: yTop + barH / 2 + 4, "text-anchor": "end", class: "endlabel" }, r.symbol);
+    const wPx = Math.max(0, x(r.proba) - x(0)), rr = Math.min(4, wPx);
+    const bar = put("path", {
+      d: `M ${x(0)},${yTop} L ${x(0) + wPx - rr},${yTop} Q ${x(0) + wPx},${yTop} ${x(0) + wPx},${yTop + rr}` +
+         ` L ${x(0) + wPx},${yTop + barH - rr} Q ${x(0) + wPx},${yTop + barH} ${x(0) + wPx - rr},${yTop + barH}` +
+         ` L ${x(0)},${yTop + barH} Z`,
+      fill: css("--series-1"),
+    });
+    put("text", { x: x(r.proba) + 6, y: yTop + barH / 2 + 4, class: "val" }, r.proba.toFixed(3));
+    const hit = put("rect", { x: 0, y: padT + i * rowH, width: W, height: rowH, fill: "transparent" });
+    hit.addEventListener("pointermove", ev => {
+      bar.style.filter = "brightness(1.12)";
+      tip.replaceChildren();
+      const row1 = el("div", "trow");
+      const key = el("span", "tkey"); key.style.borderColor = css("--series-1");
+      row1.append(key, el("span", "tval", r.proba.toFixed(3)), el("span", "tname", r.symbol + " P(up)"));
+      tip.append(row1, el("div", "tdate", r.long ? "above entry threshold — hold long" : "below threshold — stay in cash"));
+      const cardBox = card.getBoundingClientRect();
+      tip.style.display = "block";
+      tip.style.left = Math.min(ev.clientX - cardBox.left + 14, cardBox.width - 190) + "px";
+      tip.style.top = (ev.clientY - cardBox.top + 14) + "px";
+    });
+    hit.addEventListener("pointerleave", () => { bar.style.filter = ""; tip.style.display = "none"; });
+  });
+  host.append(svg);
+
+  const tbl = el("table"); const head = el("tr");
+  ["Symbol", "P(up)", "Signal"].forEach((h, i) => head.append(el("th", i === 1 ? "num" : "", h)));
+  tbl.append(head);
+  for (const r of rows) {
+    const tr = el("tr");
+    const chip = el("span", "chip" + (r.long ? " long" : ""), r.long ? "LONG" : "FLAT");
+    const td = el("td"); td.append(chip);
+    tr.append(el("td", "", r.symbol), el("td", "num", r.proba.toFixed(3)), td);
+    tbl.append(tr);
+  }
+  $("signalsTable").replaceChildren(tbl);
+  $("signalsHint").textContent = state.summary && state.summary.mode === "demo"
+    ? "Demo mode — signals computed on synthetic bars."
+    : "Fresh model per symbol, trained on the latest Alpaca daily bars.";
+}
+
+/* ---------- positions & orders ---------- */
+function renderPositions() {
+  const host = $("positions");
+  const positions = state.summary ? state.summary.positions : [];
+  if (!positions.length) { host.replaceChildren(el("div", "empty", "No open positions.")); return; }
+  const tbl = el("table"); const head = el("tr");
+  head.append(el("th", "", "Symbol"), el("th", "num", "Market value"));
+  tbl.append(head);
+  for (const p of positions) {
+    const tr = el("tr");
+    tr.append(el("td", "", p.symbol), el("td", "num", fmtMoney(p.notional)));
+    tbl.append(tr);
+  }
+  host.replaceChildren(tbl);
+}
+
+function renderOrders(report) {
+  const host = $("orders");
+  if (!report) return;
+  const bits = [];
+  if (!report.orders.length) bits.push(el("div", "empty", "Portfolio already at target — no orders."));
+  else {
+    const tbl = el("table"); const head = el("tr");
+    ["Side", "Symbol", "Notional"].forEach((h, i) => head.append(el("th", i === 2 ? "num" : "", h)));
+    tbl.append(head);
+    for (const o of report.orders) {
+      const tr = el("tr");
+      tr.append(el("td", "", o.side.toUpperCase()), el("td", "", o.symbol), el("td", "num", fmtMoney(o.notional)));
+      tbl.append(tr);
+    }
+    bits.push(tbl);
+  }
+  bits.push(el("div", "empty", report.sent ? "Orders sent to Alpaca." : (report.note || "Dry run — nothing sent.")));
+  host.replaceChildren(...bits);
+}
+
+/* ---------- data flow ---------- */
+async function loadSummary() {
+  state.summary = await fetchJSON("/api/summary");
+  const badge = $("modeBadge");
+  badge.textContent = state.summary.mode;
+  badge.classList.toggle("live", state.summary.mode === "live");
+  $("marketState").textContent = state.summary.mode === "demo"
+    ? "synthetic data — add Alpaca keys to go paper"
+    : (state.summary.market_open ? "market open" : "market closed");
+  $("sendOrders").disabled = state.summary.mode === "demo";
+  const sel = $("symbolSel");
+  if (!sel.options.length) {
+    for (const s of state.summary.symbols) sel.append(new Option(s, s));
+    state.symbol = state.summary.symbols[0];
+  }
+}
+
+async function loadSignals() { state.signals = await fetchJSON("/api/signals"); }
+async function loadBacktest() { state.backtest = await fetchJSON("/api/backtest?symbol=" + encodeURIComponent(state.symbol)); }
+
+function renderAll() { renderTiles(); renderEquity(); renderSignals(); renderPositions(); }
+
+async function refresh(parts) {
+  const cards = document.querySelectorAll(".card, .tiles");
+  cards.forEach(c => c.classList.add("refreshing"));
+  $("statusMsg").textContent = "loading…";
+  try {
+    await Promise.all(parts.map(fn => fn()));
+    $("statusMsg").textContent = "updated " + new Date().toLocaleTimeString();
+  } catch (err) {
+    $("statusMsg").textContent = "error: " + err.message;
+  } finally {
+    cards.forEach(c => c.classList.remove("refreshing"));
+    renderAll();
+  }
+}
+
+$("symbolSel").addEventListener("change", ev => { state.symbol = ev.target.value; state.backtest = null; renderAll(); refresh([loadBacktest]); });
+$("refreshBtn").addEventListener("click", () => refresh([loadSummary, loadSignals, loadBacktest]));
+$("rebalanceBtn").addEventListener("click", async () => {
+  const send = $("sendOrders").checked;
+  if (send && !confirm("Send real orders to the account?")) return;
+  $("statusMsg").textContent = "rebalancing…";
+  try {
+    const report = await fetchJSON("/api/rebalance", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dry_run: !send }),
+    });
+    renderOrders(report);
+    $("statusMsg").textContent = report.sent ? "orders sent" : "dry run complete";
+    if (report.sent) refresh([loadSummary]);
+  } catch (err) {
+    $("statusMsg").textContent = "error: " + err.message;
+  }
+});
+window.addEventListener("resize", renderAll);
+setInterval(() => refresh([loadSummary, loadSignals]), 60_000);
+
+refresh([loadSummary]).then(() => refresh([loadSignals, loadBacktest]));
+</script>
+</body>
+</html>

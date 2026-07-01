@@ -4,19 +4,23 @@
     python -m mltrader.cli backtest --synthetic          # no API keys needed
     python -m mltrader.cli train --symbol SPY --out models/SPY.joblib
     python -m mltrader.cli trade --dry-run               # one rebalance cycle
+    python -m mltrader.cli bot                           # daily rebalance loop
+    python -m mltrader.cli serve --port 8000             # web dashboard
     python -m mltrader.cli status
 """
 
 from __future__ import annotations
 
 import argparse
+import time
+from datetime import date
 
+from . import engine
 from .backtest import walk_forward_backtest
 from .config import Settings
 from .data import fetch_daily_bars, synthetic_daily_bars
-from .features import build_dataset, build_features
-from .model import predict_proba_up, save_model, train
-from .risk import RiskLimits, orders_from_weights, target_weights
+from .features import build_dataset
+from .model import save_model, train
 
 
 def _load_bars(settings: Settings, symbol: str, synthetic: bool, years: float):
@@ -44,52 +48,55 @@ def cmd_train(args, settings: Settings) -> None:
     print(f"Trained on {len(dataset)} rows, saved to {args.out}")
 
 
-def cmd_trade(args, settings: Settings) -> None:
-    from .broker import AlpacaBroker
-
-    broker = AlpacaBroker(settings)
+def _run_cycle(broker, settings: Settings, years: float, dry_run: bool) -> None:
     mode = "PAPER" if settings.paper else "LIVE"
     print(f"[{mode}] rebalance cycle for {', '.join(settings.symbols)}")
 
-    if not args.dry_run and not broker.market_is_open():
+    if not dry_run and not broker.market_is_open():
         print("Market is closed — orders would not fill at expected prices. "
               "Use --dry-run to preview, or run during market hours.")
         return
 
-    proba_by_symbol: dict[str, float] = {}
-    for symbol in settings.symbols:
-        bars = fetch_daily_bars(settings, symbol, years=args.years)
-        dataset = build_dataset(bars)
-        model = train(dataset)
-        latest = build_features(bars).dropna().iloc[[-1]]
-        p = float(predict_proba_up(model, latest)[0])
-        proba_by_symbol[symbol] = p
+    report = engine.rebalance(broker, settings, years=years, dry_run=dry_run)
+    for symbol, p in report["signals"].items():
         print(f"  {symbol}: P(up) = {p:.3f}")
-
-    limits = RiskLimits(
-        max_position_pct=settings.max_position_pct,
-        max_gross_exposure=settings.max_gross_exposure,
-    )
-    weights = target_weights(proba_by_symbol, settings.entry_threshold, limits)
-    equity = broker.equity()
-    orders = orders_from_weights(
-        weights,
-        prices=broker.latest_prices(settings.symbols),
-        current_notional=broker.positions_notional(),
-        equity=equity,
-        limits=limits,
-    )
-
-    if not orders:
+    if not report["orders"]:
         print("Portfolio already at target — no orders.")
         return
-    for o in orders:
-        line = f"  {o['side'].upper():4s} {o['symbol']} ${o['notional']:,.2f}"
-        if args.dry_run:
-            print(f"[dry-run]{line}")
-        else:
-            broker.submit_notional_order(o["symbol"], o["side"], o["notional"])
-            print(f"[sent]  {line}")
+    tag = "[dry-run]" if dry_run else "[sent]  "
+    for o in report["orders"]:
+        print(f"{tag}  {o['side'].upper():4s} {o['symbol']} ${o['notional']:,.2f}")
+
+
+def cmd_trade(args, settings: Settings) -> None:
+    from .broker import AlpacaBroker
+
+    _run_cycle(AlpacaBroker(settings), settings, args.years, args.dry_run)
+
+
+def cmd_bot(args, settings: Settings) -> None:
+    """Long-running loop: one rebalance per market day, then idle."""
+    from .broker import AlpacaBroker
+
+    broker = AlpacaBroker(settings)
+    last_run: date | None = None
+    print(f"bot started — checking every {args.every}s, one rebalance per market day")
+    while True:
+        try:
+            if last_run != date.today() and broker.market_is_open():
+                _run_cycle(broker, settings, args.years, dry_run=False)
+                last_run = date.today()
+        except Exception as exc:  # keep the loop alive through transient API errors
+            print(f"cycle failed, will retry next check: {exc}")
+        time.sleep(args.every)
+
+
+def cmd_serve(args, settings: Settings) -> None:
+    import uvicorn
+
+    from .server import create_app
+
+    uvicorn.run(create_app(settings), host=args.host, port=args.port)
 
 
 def cmd_status(args, settings: Settings) -> None:
@@ -128,6 +135,16 @@ def main(argv: list[str] | None = None) -> None:
     p_td.add_argument("--years", type=float, default=6.0)
     p_td.add_argument("--dry-run", action="store_true", help="print orders without sending")
     p_td.set_defaults(func=cmd_trade)
+
+    p_bot = sub.add_parser("bot", help="run the daily rebalance loop")
+    p_bot.add_argument("--years", type=float, default=6.0)
+    p_bot.add_argument("--every", type=int, default=1800, help="seconds between checks")
+    p_bot.set_defaults(func=cmd_bot)
+
+    p_sv = sub.add_parser("serve", help="run the web dashboard")
+    p_sv.add_argument("--host", default="127.0.0.1")
+    p_sv.add_argument("--port", type=int, default=8000)
+    p_sv.set_defaults(func=cmd_serve)
 
     p_st = sub.add_parser("status", help="show account equity and positions")
     p_st.set_defaults(func=cmd_status)
