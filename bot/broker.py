@@ -81,6 +81,8 @@ class Broker:
     # ------------------------------------------------------------------
     @staticmethod
     def _timeframe(minutes: int) -> TimeFrame:
+        if minutes >= 1440:
+            return TimeFrame(minutes // 1440, TimeFrameUnit.Day)
         if minutes % 60 == 0:
             return TimeFrame(minutes // 60, TimeFrameUnit.Hour)
         return TimeFrame(minutes, TimeFrameUnit.Minute)

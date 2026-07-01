@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 TRADES_HEADER = [
     "timestamp", "instrument", "direction",
-    "entry_price", "exit_price", "pnl", "position_size",
+    "entry_price", "exit_price", "pnl", "position_size", "reason",
 ]
 DAILY_PNL_HEADER = ["date", "realized_pnl", "account_equity"]
 
@@ -93,6 +93,7 @@ class Portfolio:
             f"{exit_price:.6f}",
             f"{pnl:.2f}",
             pos.qty,
+            reason,
         ])
         self.save_state()
         logger.info(

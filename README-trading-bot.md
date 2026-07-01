@@ -77,6 +77,30 @@ Sharpe, return), saves an equity-curve chart to `backtest_results.png`,
 and flags any strategy with negative Sharpe or drawdown beyond −15%.
 Exit code is 2 when flags exist, 0 when clean.
 
+## Scheduled reports
+
+```bash
+python -m bot.reports morning   # positions, yesterday's P&L, market
+                                # conditions, 7-day win rate, risk flags
+python -m bot.reports evening   # today's trades & P&L, best/worst trade,
+                                # equity, backtest tracking, stop-loss audit
+```
+
+Reports print to stdout and push through every configured notification
+channel. To run them automatically on your machine (`crontab -e`, times
+are the machine's local time):
+
+```cron
+58 6  * * *   cd /path/to/trading-bot && .venv/bin/python -m bot.reports morning
+5  16 * * 1-5 cd /path/to/trading-bot && .venv/bin/python -m bot.reports evening
+```
+
+The morning report uses VIXY as a VIX proxy (Alpaca carries no VIX index
+feed) and classifies SPY/QQQ regime by the hourly 20/50 EMA spread. The
+evening report compares live win rate / profit factor per instrument
+against `BACKTEST_BASELINE` in config.py — re-run the backtest and update
+those numbers when parameters change.
+
 ## Behavior notes
 
 - The loop wakes every 60 s: it checks stops on open positions every wake,

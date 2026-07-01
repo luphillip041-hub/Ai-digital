@@ -132,3 +132,16 @@ LOG_FILE = "bot.log"
 # API retry policy for transient failures (disconnects, timeouts, 5xx).
 API_MAX_RETRIES = 4
 API_RETRY_BASE_DELAY = 2  # seconds; doubles each retry: 2, 4, 8, 16
+
+# ---------------------------------------------------------------------------
+# Backtest baseline (6-month run 2025-12-30 -> 2026-07-01, 2.5σ bands,
+# corrected stop). bot/reports.py compares live performance against these
+# to answer "is the bot on track with backtest expectations".
+# ---------------------------------------------------------------------------
+BACKTEST_BASELINE = {
+    "SPY": {"win_rate": 0.52, "profit_factor": 0.69, "trades_per_week": 2.2},
+    "QQQ": {"win_rate": 0.45, "profit_factor": 0.66, "trades_per_week": 2.4},
+    "BTC/USD": {"win_rate": 0.14, "profit_factor": 0.21, "trades_per_week": 1.9},
+    "GLD": {"win_rate": 0.33, "profit_factor": 0.37, "trades_per_week": 0.1},
+    "USO": {"win_rate": 0.00, "profit_factor": 0.00, "trades_per_week": 0.1},
+}

@@ -92,12 +92,15 @@ class Notifier:
     # ------------------------------------------------------------------
     @staticmethod
     def _send_discord(subject: str, body: str) -> None:
-        resp = requests.post(
-            config.DISCORD_WEBHOOK_URL,
-            json={"content": f"**{subject}**\n{body}"},
-            timeout=10,
-        )
-        resp.raise_for_status()
+        text = f"**{subject}**\n{body}"
+        # Discord caps messages at 2000 chars — chunk long reports.
+        for i in range(0, len(text), 1900):
+            resp = requests.post(
+                config.DISCORD_WEBHOOK_URL,
+                json={"content": text[i:i + 1900]},
+                timeout=10,
+            )
+            resp.raise_for_status()
 
     @staticmethod
     def _send_telegram(subject: str, body: str) -> None:
