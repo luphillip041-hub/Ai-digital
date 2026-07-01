@@ -1,9 +1,33 @@
-"""Configuration loaded from environment variables (see .env.example)."""
+"""Configuration loaded from environment variables (see .env.example).
+
+A trading/.env file, if present, is loaded automatically at import time so
+keys only ever need to be written down once, locally. Values already set in
+the real environment win over the file.
+"""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+DOTENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+
+
+def load_dotenv(path: Path = DOTENV_PATH) -> None:
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_dotenv()
 
 
 def _env_bool(name: str, default: bool) -> bool:

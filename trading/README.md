@@ -45,8 +45,10 @@ Alpaca daily bars ──▶ features.py ──▶ model.py (HistGradientBoosting
 cd trading
 pip install -r requirements.txt
 cp .env.example .env          # fill in your Alpaca PAPER keys
-export $(grep -v '^#' .env | xargs)
 ```
+
+`trading/.env` is loaded automatically by every command (and is gitignored),
+so no `export` is needed.
 
 ## Usage
 
