@@ -35,6 +35,7 @@ ALPACA_API_KEY=${ALPACA_API_KEY}
 ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
 ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
 ALPACA_DATA_FEED=${ALPACA_DATA_FEED:-iex}
+DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
 EOF
     chmod 600 .env
     echo "==> Wrote .env (gitignored, mode 600)"
