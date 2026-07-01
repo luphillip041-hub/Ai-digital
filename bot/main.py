@@ -22,6 +22,7 @@ from typing import Optional
 
 import config
 from bot.broker import Broker
+from bot.notifier import Notifier
 from bot.portfolio import Portfolio
 from bot.risk_manager import RiskManager
 from bot.strategies import STRATEGY_REGISTRY
@@ -43,6 +44,7 @@ class TradingBot:
         self.broker = Broker()
         self.portfolio = Portfolio()
         self.risk = RiskManager()
+        self.notifier = Notifier()
         self.strategies = {
             key: STRATEGY_REGISTRY[cfg["strategy"]](key, cfg["params"])
             for key, cfg in config.INSTRUMENTS.items()
@@ -93,6 +95,11 @@ class TradingBot:
             config.RISK_PER_TRADE * 100,
         )
         self.reconcile_positions()
+        self.notifier.send(
+            "Bot started",
+            f"{len(config.INSTRUMENTS)} instruments, "
+            f"{len(self.portfolio.positions)} open position(s) restored",
+        )
         while True:
             try:
                 self.tick()
@@ -229,6 +236,7 @@ class TradingBot:
             atr=atr, hard_stop=hard_stop,
             trail_atr_mult=cfg["trail_atr_mult"], strategy=cfg["strategy"],
         )
+        self.notifier.trade_opened(key, direction, qty, fill, hard_stop, reason)
 
     def close_trade(self, key: str, cfg: dict, reason: str) -> None:
         position = self.portfolio.get(key)
@@ -242,7 +250,9 @@ class TradingBot:
             fill = self.broker.get_latest_price(cfg) or position.entry_price
             logger.error("Exit fill for %s unconfirmed — logging close at "
                          "%.4f; verify at the broker", key, fill)
-        self.portfolio.close_position(key, fill, reason)
+        pnl = self.portfolio.close_position(key, fill, reason)
+        self.notifier.trade_closed(key, position.direction, position.qty,
+                                   fill, pnl, reason)
 
     # ------------------------------------------------------------------
     # Daily P&L
@@ -258,7 +268,23 @@ class TradingBot:
             logger.error("Equity unavailable for daily P&L: %s", exc)
             equity = None
         self.portfolio.log_daily_pnl(self.current_day, equity)
+        day = self.current_day.isoformat()
+        self.notifier.daily_summary(
+            day,
+            self.portfolio.realized_by_day.get(day, 0.0),
+            equity,
+            self._trades_closed_on(day),
+            self.portfolio.positions,
+        )
         self.current_day = today
+
+    @staticmethod
+    def _trades_closed_on(day: str) -> int:
+        try:
+            with open(config.TRADES_CSV) as f:
+                return sum(1 for line in f if line.startswith(day))
+        except OSError:
+            return 0
 
 
 def main() -> None:
