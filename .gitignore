@@ -17,3 +17,4 @@ bot.out
 
 # Node (existing webapp)
 node_modules/
+bot.pid
