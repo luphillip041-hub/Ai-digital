@@ -6,7 +6,8 @@ Isolated trading-research desk for <@832503719866007552>, built around TauricRes
 
 - A low-token wrapper around `TauricResearch/TradingAgents`.
 - Defaults to fewer analysts, fewer news articles, one bull/bear debate round, one risk round, local checkpointing, and local memory.
-- Produces structured JSON decisions for later Discord bot/web dashboard integration.
+- Produces structured JSON decisions for Discord bot/web dashboard integration.
+- Includes a Discord command bot for shared 24/7 server access.
 - Research/paper-trading scaffold only — not financial advice and not auto-execution.
 
 ## Folder boundary
@@ -19,7 +20,15 @@ Ai-digital/
     requirements.txt
     scripts/
       setup.sh
+      scan_watchlist.py
       run_desk_analysis.py
+      openalice_bridge.py
+    bot/
+      discord_bot.py
+    deploy/
+      flip-trading-desk-bot.service
+    Dockerfile
+    docker-compose.yml
     runs/              # generated decisions, ignored by git later
     .cache/            # generated data/checkpoints, ignored by git later
     memory/            # generated TradingAgents memory, ignored by git later
@@ -71,6 +80,55 @@ OPENROUTER_API_KEY=...
 ALPHA_VANTAGE_API_KEY=...
 FRED_API_KEY=...
 ```
+
+## Discord bot — shared 24/7 access
+
+Commands available to everyone in allowed Discord channels:
+
+```text
+!scan SPY,QQQ,NVDA,TSLA  # zero-LLM watchlist scanner
+!preflight AAPL          # budget/model check, no LLM spend
+!desk AAPL               # low-burn desk analysis
+!deskfull NVDA           # expensive full analyst stack
+!budget                  # monthly estimated LLM-call ledger
+!runs                    # recent saved JSON artifacts
+!deskhelp                # command help
+```
+
+Create a Discord bot token:
+
+1. Discord Developer Portal → New Application → Bot.
+2. Enable **Message Content Intent**.
+3. Invite with `View Channels`, `Send Messages`, `Read Message History`.
+4. Put the token in `.env` as `DISCORD_BOT_TOKEN=...`.
+5. Optional: set `FLIP_DESK_ALLOWED_GUILD_IDS` / `FLIP_DESK_ALLOWED_CHANNEL_IDS` to comma-separated IDs.
+
+Run locally:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+source .venv/bin/activate
+bash scripts/run_discord_bot.sh
+```
+
+Run 24/7 with Docker:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+docker compose up -d --build
+docker compose logs -f flip-trading-desk-bot
+```
+
+Run 24/7 with systemd instead:
+
+```bash
+sudo cp deploy/flip-trading-desk-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now flip-trading-desk-bot
+sudo journalctl -u flip-trading-desk-bot -f
+```
+
+The bot queues `!desk`/`!deskfull` one at a time so Discord users cannot accidentally spawn five expensive model runs at once.
 
 ## Run examples
 
@@ -184,14 +242,16 @@ Key upstream facts used here:
 - Named model profiles: `cheap`, `balanced`, `local`.
 - Zero-LLM watchlist scanner for broad symbol triage.
 - OpenAlice cockpit bridge without vendoring AGPL code.
+- Discord command bot for shared server access.
+- Docker Compose and systemd deployment for 24/7 operation.
 - Preflight mode to estimate LLM/tool usage before spending tokens.
 - SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.
 - Monthly estimated LLM-call cap before every non-preflight run.
 
 ## Next fixes to build
 
-1. Add a Discord command wrapper: `!scan`, `!desk AAPL`, `!deskfull NVDA`, `!deskrisk SPY`.
-2. Add a provider router later if MiniMax/DeepSeek/OpenRouter IDs are verified.
+1. Add a small dashboard for scan/runs/budget visibility.
+2. Add deterministic position-risk engine before any paper trade adapter.
 3. Add paper-trading execution only after the research layer proves useful.
 
 ## GitHub push/update instructions for Flip
