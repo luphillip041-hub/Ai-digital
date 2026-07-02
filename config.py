@@ -124,6 +124,15 @@ INSTRUMENTS = {
 # How often the main loop wakes up to check stops and bar boundaries (seconds).
 POLL_INTERVAL_SECONDS = 60
 
+# In-bot report schedule (times in America/New_York). The bot sends each
+# report through the notification channels the first poll at/after the
+# given time; if the bot was down at that moment it sends on the next
+# start-up that day (late is better than never). No cron required.
+REPORT_SCHEDULE = {
+    "morning": {"time": "07:00", "weekdays_only": False},
+    "evening": {"time": "16:05", "weekdays_only": True},  # after market close
+}
+
 TRADES_CSV = "trades.csv"
 DAILY_PNL_CSV = "daily_pnl.csv"
 STATE_FILE = "bot_state.json"

@@ -40,6 +40,8 @@ class Portfolio:
         self.positions: Dict[str, Position] = {}
         # realized P&L per ISO date string, survives restarts via state file
         self.realized_by_day: Dict[str, float] = {}
+        # small persisted key/value store (e.g. report_*_last_sent dates)
+        self.meta: Dict[str, str] = {}
         self._init_csv(config.TRADES_CSV, TRADES_HEADER)
         self._init_csv(config.DAILY_PNL_CSV, DAILY_PNL_HEADER)
         self.load_state()
@@ -129,6 +131,7 @@ class Portfolio:
         state = {
             "positions": {s: asdict(p) for s, p in self.positions.items()},
             "realized_by_day": self.realized_by_day,
+            "meta": self.meta,
         }
         tmp = config.STATE_FILE + ".tmp"
         with open(tmp, "w") as f:
@@ -145,6 +148,7 @@ class Portfolio:
                 s: Position(**p) for s, p in state.get("positions", {}).items()
             }
             self.realized_by_day = state.get("realized_by_day", {})
+            self.meta = state.get("meta", {})
             if self.positions:
                 logger.info("Restored %d open position(s) from state: %s",
                             len(self.positions), list(self.positions))

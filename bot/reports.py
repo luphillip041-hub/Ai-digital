@@ -320,6 +320,16 @@ def evening_report(broker: Broker, portfolio: Portfolio) -> str:
 
 
 # ---------------------------------------------------------------------------
+def build_report(kind: str, broker: Broker, portfolio: Portfolio):
+    """Return (title, body) for a report; used by the CLI and by the in-bot
+    scheduler in main.py."""
+    if kind == "morning":
+        return (f"☀️ Morning briefing — {datetime.now(timezone.utc):%Y-%m-%d}",
+                morning_report(broker, portfolio))
+    return (f"🌙 Evening report — {datetime.now(timezone.utc):%Y-%m-%d}",
+            evening_report(broker, portfolio))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate bot reports")
     parser.add_argument("kind", choices=["morning", "evening"])
@@ -328,16 +338,7 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING)
-    broker = Broker()
-    portfolio = Portfolio()
-
-    if args.kind == "morning":
-        title = f"☀️ Morning briefing — {datetime.now(timezone.utc):%Y-%m-%d}"
-        body = morning_report(broker, portfolio)
-    else:
-        title = f"🌙 Evening report — {datetime.now(timezone.utc):%Y-%m-%d}"
-        body = evening_report(broker, portfolio)
-
+    title, body = build_report(args.kind, Broker(), Portfolio())
     print(title, body, sep="\n")
     if not args.no_send:
         Notifier().send(title, body)

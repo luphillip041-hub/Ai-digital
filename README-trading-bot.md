@@ -86,14 +86,13 @@ python -m bot.reports evening   # today's trades & P&L, best/worst trade,
                                 # equity, backtest tracking, stop-loss audit
 ```
 
-Reports print to stdout and push through every configured notification
-channel. To run them automatically on your machine (`crontab -e`, times
-are the machine's local time):
-
-```cron
-58 6  * * *   cd /path/to/trading-bot && .venv/bin/python -m bot.reports morning
-5  16 * * 1-5 cd /path/to/trading-bot && .venv/bin/python -m bot.reports evening
-```
+**The running bot sends these automatically** — no cron needed. The
+schedule lives in `config.REPORT_SCHEDULE` (New York time): morning at
+07:00 every day, evening at 16:05 on weekdays. If the bot was down at
+the scheduled moment it sends the report on the first poll after it's
+back up that day. The CLI above remains available for on-demand runs;
+if you previously added crontab entries for these, remove them to
+avoid duplicate messages.
 
 The morning report uses VIXY as a VIX proxy (Alpaca carries no VIX index
 feed) and classifies SPY/QQQ regime by the hourly 20/50 EMA spread. The

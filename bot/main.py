@@ -19,6 +19,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import config
 from bot.broker import Broker
@@ -37,6 +38,8 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("bot")
+
+NY = ZoneInfo("America/New_York")
 
 
 class TradingBot:
@@ -127,6 +130,32 @@ class TradingBot:
                 logger.exception("Error processing %s — skipping this tick", key)
 
         self.rollover_daily_pnl()
+        self.maybe_send_reports()
+
+    def maybe_send_reports(self) -> None:
+        """Send the morning briefing / evening report the first poll at or
+        after its scheduled New York time, once per day, no cron needed."""
+        now = datetime.now(NY)
+        for kind, spec in config.REPORT_SCHEDULE.items():
+            if spec["weekdays_only"] and now.weekday() >= 5:
+                continue
+            hour, minute = map(int, spec["time"].split(":"))
+            if (now.hour, now.minute) < (hour, minute):
+                continue
+            meta_key = f"report_{kind}_last_sent"
+            if self.portfolio.meta.get(meta_key) == now.date().isoformat():
+                continue
+            # Mark before sending so a failure can't spam every poll; the
+            # error is logged and the next attempt is tomorrow.
+            self.portfolio.meta[meta_key] = now.date().isoformat()
+            self.portfolio.save_state()
+            try:
+                from bot.reports import build_report
+                title, body = build_report(kind, self.broker, self.portfolio)
+                self.notifier.send(title, body)
+                logger.info("Sent scheduled %s report", kind)
+            except Exception:
+                logger.exception("Failed to build/send %s report", kind)
 
     def process_instrument(self, key: str, cfg: dict, market_open: bool) -> None:
         # Equities can only be traded (and stopped out) during market hours.
