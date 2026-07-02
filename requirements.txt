@@ -1,0 +1,11 @@
+# NOTE: alpaca-trade-api pins msgpack==1.0.3, which has no prebuilt wheel for
+# Python 3.11+. If `pip install -r requirements.txt` fails building msgpack,
+# install like this instead (the bot only uses the REST client, so unpinned
+# transitive deps are fine):
+#   pip install msgpack aiohttp websockets websocket-client PyYAML deprecation \
+#               requests urllib3 pandas numpy python-dotenv
+#   pip install --no-deps alpaca-trade-api
+alpaca-trade-api>=3.0.2
+pandas>=1.5
+numpy>=1.23
+python-dotenv>=1.0

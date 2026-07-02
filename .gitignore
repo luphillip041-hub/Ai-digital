@@ -1,0 +1,21 @@
+# Secrets — never commit real API keys
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Bot runtime artifacts
+trades.csv
+daily_pnl.csv
+bot_state.json
+bot.log
+bot.out
+
+# Node (existing webapp)
+node_modules/
+bot.pid
+backtest_results.png
