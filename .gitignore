@@ -7,6 +7,7 @@ trading-desk/runs/
 trading-desk/memory/
 trading-desk/.openalice/
 trading-desk/__pycache__/
+trading-desk/bot/__pycache__/
 trading-desk/scripts/__pycache__/
 
 # General
