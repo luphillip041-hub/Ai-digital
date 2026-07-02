@@ -37,6 +37,8 @@ The upstream project can burn API tokens because it runs many agents and debates
 | Risk debate | configurable multi-round | 1 round |
 | Checkpoints | opt-in | on |
 | Memory/cache | global `~/.tradingagents` | local `trading-desk/` |
+| Budget guard | none | local SQLite estimated-call cap |
+| Model profile | manual | `cheap`, `balanced`, or `local` preset |
 | Output | terminal + logs | terminal + JSON in `runs/` |
 
 Use `--full` only when the user specifically wants the expensive analyst stack.
@@ -72,12 +74,41 @@ FRED_API_KEY=...
 
 ## Run examples
 
-Cheap/default desk pass:
+Zero-token watchlist scan first:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+source .venv/bin/activate
+python scripts/scan_watchlist.py --symbols SPY,QQQ,NVDA,TSLA,SMH,AAPL,MSFT --max-finalists 3
+```
+
+Cheap/default desk pass on a scanner finalist:
 
 ```bash
 cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
 source .venv/bin/activate
 python scripts/run_desk_analysis.py AAPL --date 2026-07-01
+```
+
+Preflight only — shows config, analyst set, estimated LLM calls, and monthly budget without calling any model:
+
+```bash
+python scripts/run_desk_analysis.py AAPL --date 2026-07-01 --preflight-only
+```
+
+Use the local monthly cap guard. Default is `250` estimated LLM calls/month; override intentionally:
+
+```bash
+python scripts/run_desk_analysis.py NVDA --monthly-llm-call-cap 1000
+python scripts/run_desk_analysis.py NVDA --force   # bypass cap once
+```
+
+Model routing presets:
+
+```bash
+python scripts/run_desk_analysis.py AAPL --model-profile cheap
+python scripts/run_desk_analysis.py AAPL --model-profile balanced
+python scripts/run_desk_analysis.py AAPL --model-profile local --backend-url http://localhost:1234/v1
 ```
 
 Use only technical/market analyst:
@@ -103,11 +134,11 @@ Test provider/model override:
 ```bash
 python scripts/run_desk_analysis.py AAPL \
   --provider deepseek \
-  --quick-model deepseek-chat \
-  --deep-model deepseek-chat
+  --quick-model deepseek-v4-flash \
+  --deep-model deepseek-v4-pro
 ```
 
-If a provider exposes `deepseek-v4-flash` or `minimax-m3`, swap via `.env` or flags:
+If a provider exposes OpenRouter-style IDs, swap via `.env` or flags:
 
 ```bash
 TRADINGAGENTS_QUICK_THINK_LLM=deepseek-v4-flash
@@ -138,13 +169,21 @@ Key upstream facts used here:
   - `TRADINGAGENTS_RESULTS_DIR`
   - `TRADINGAGENTS_MEMORY_LOG_PATH`
 
+## Built improvements
+
+- Isolated project-local cache/results/memory.
+- Reduced default analyst set and capped news pulls.
+- Named model profiles: `cheap`, `balanced`, `local`.
+- Zero-LLM watchlist scanner for broad symbol triage.
+- Preflight mode to estimate LLM/tool usage before spending tokens.
+- SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.
+- Monthly estimated LLM-call cap before every non-preflight run.
+
 ## Next fixes to build
 
-1. Add a Discord command wrapper: `!desk AAPL`, `!deskfull NVDA`, `!deskrisk SPY`.
-2. Add a small SQLite run ledger for costs, symbols, timestamps, and decisions.
-3. Add a hard monthly API spend cap before every run.
-4. Add a provider router later if MiniMax/DeepSeek/OpenRouter IDs are verified.
-5. Add paper-trading execution only after the research layer proves useful.
+1. Add a Discord command wrapper: `!scan`, `!desk AAPL`, `!deskfull NVDA`, `!deskrisk SPY`.
+2. Add a provider router later if MiniMax/DeepSeek/OpenRouter IDs are verified.
+3. Add paper-trading execution only after the research layer proves useful.
 
 ## GitHub push/update instructions for Flip
 
