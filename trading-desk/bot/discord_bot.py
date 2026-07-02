@@ -253,7 +253,8 @@ def command_allowed(message: discord.Message) -> bool:
 
 
 HELP = f"""🤖 **Flip Desk Commands**
-`{PREFIX}scan [symbols]` — zero-LLM scanner, e.g. `{PREFIX}scan SPY,QQQ,NVDA,TSLA`
+`{PREFIX}scan [symbols]` — zero-LLM stock scanner, e.g. `{PREFIX}scan SPY,QQQ,NVDA,TSLA`
+`{PREFIX}optionscan [symbols]` — options signal scanner with contract/liquidity/risk card
 `{PREFIX}preflight TICKER` — budget/model check, no LLM spend
 `{PREFIX}desk TICKER` — low-burn analysis after preflight
 `{PREFIX}deskfull TICKER` — expensive full analyst stack
@@ -324,6 +325,40 @@ async def on_message(message: discord.Message) -> None:
             payload = _read_json(out)
             payload["output_path"] = str(out.relative_to(DESK_ROOT))
             await thinking.edit(content=format_scan(payload)[:MAX_DISCORD_CHARS])
+            return
+
+        if cmd in {"optionscan", "optscan", "oscan"}:
+            symbols = args[0] if args else DEFAULT_SYMBOLS
+            out = RUNS_DIR / f"discord_options_scan_{_now_stamp()}.json"
+            md_out = RUNS_DIR / f"discord_options_signal_{_now_stamp()}.md"
+            thinking = await message.reply("📡 scanning options setups — chart + chain + liquidity…", mention_author=False)
+            result = await run_cmd(
+                [
+                    PYTHON,
+                    "scripts/options_signal_scanner.py",
+                    "--symbols",
+                    symbols,
+                    "--max-signals",
+                    os.getenv("FLIP_DESK_MAX_OPTION_SIGNALS", "3"),
+                    "--out",
+                    str(out),
+                    "--markdown-out",
+                    str(md_out),
+                ],
+                timeout=SCAN_TIMEOUT_SECONDS * 3,
+            )
+            if result.exit_code != 0:
+                await thinking.edit(content=f"❌ options scan failed\n```{(result.stderr or result.stdout)[-1500:]}```")
+                return
+            payload = _read_json(out)
+            signals = payload.get("signals") or []
+            if not signals:
+                await thinking.edit(content="📭 No qualifying options signal found with current filters.")
+                return
+            top = signals[0]
+            text = top.get("signal_text") or json.dumps(top, indent=2, default=str)[:1200]
+            text += f"\n\nFull scan saved `{out.relative_to(DESK_ROOT)}`"
+            await thinking.edit(content=text[:MAX_DISCORD_CHARS])
             return
 
         if cmd in {"preflight", "desk", "deskfull"}:

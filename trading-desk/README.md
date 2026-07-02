@@ -23,6 +23,9 @@ Ai-digital/
       scan_watchlist.py
       run_desk_analysis.py
       openalice_bridge.py
+    docs/
+      options_scanner_playbook.md
+      sample_options_signal.md
     bot/
       discord_bot.py
     deploy/
@@ -86,7 +89,8 @@ FRED_API_KEY=...
 Commands available to everyone in allowed Discord channels:
 
 ```text
-!scan SPY,QQQ,NVDA,TSLA  # zero-LLM watchlist scanner
+!scan SPY,QQQ,NVDA,TSLA  # zero-LLM stock scanner
+!optionscan SPY,QQQ,NVDA  # options signal scanner with contract/liquidity/risk card
 !preflight AAPL          # budget/model check, no LLM spend
 !desk AAPL               # low-burn desk analysis
 !deskfull NVDA           # expensive full analyst stack
@@ -175,6 +179,16 @@ OpenAlice cockpit prompt:
 python scripts/openalice_bridge.py --symbols SPY,QQQ,NVDA,TSLA --max-finalists 3
 ```
 
+Options signal scanner:
+
+```bash
+python scripts/options_signal_scanner.py \
+  --symbols SPY,QQQ,NVDA,TSLA,AMD,AAPL,MSFT,COIN,MSTR \
+  --max-signals 3
+```
+
+Outputs a full JSON scan to `runs/options_signals_latest.json` and a Discord-ready signal card to `runs/options_signal_example.md`. See `docs/options_scanner_playbook.md` for the scanner methodology.
+
 See `trading-desk/openalice/README.md` for install/start/headless details.
 
 Use only technical/market analyst:
@@ -241,6 +255,7 @@ Key upstream facts used here:
 - Reduced default analyst set and capped news pulls.
 - Named model profiles: `cheap`, `balanced`, `local`.
 - Zero-LLM watchlist scanner for broad symbol triage.
+- Zero-LLM options signal scanner with chart setup, chain liquidity, IV/expected-move context, and management plan.
 - OpenAlice cockpit bridge without vendoring AGPL code.
 - Discord command bot for shared server access.
 - Docker Compose and systemd deployment for 24/7 operation.
