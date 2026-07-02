@@ -1,0 +1,16 @@
+# Flip trading desk local/runtime files
+trading-desk/.env
+trading-desk/.env.local
+trading-desk/.venv/
+trading-desk/.cache/
+trading-desk/runs/
+trading-desk/memory/
+trading-desk/__pycache__/
+trading-desk/scripts/__pycache__/
+
+# General
+.DS_Store
+.env
+.env.local
+node_modules/
+.next/

@@ -1,0 +1,175 @@
+# Flip Trading Desk
+
+Isolated trading-research desk for <@832503719866007552>, built around TauricResearch/TradingAgents without mixing into Taylor/Slam projects. This folder is intended to contain every trading-desk artifact for Flip: config, runs, cache, memory, scripts, and future bot glue.
+
+## What this is
+
+- A low-token wrapper around `TauricResearch/TradingAgents`.
+- Defaults to fewer analysts, fewer news articles, one bull/bear debate round, one risk round, local checkpointing, and local memory.
+- Produces structured JSON decisions for later Discord bot/web dashboard integration.
+- Research/paper-trading scaffold only — not financial advice and not auto-execution.
+
+## Folder boundary
+
+```text
+Ai-digital/
+  app/                 # existing Next.js revenue app, left untouched
+  trading-desk/        # Flip trading desk starts here
+    .env.example
+    requirements.txt
+    scripts/
+      setup.sh
+      run_desk_analysis.py
+    runs/              # generated decisions, ignored by git later
+    .cache/            # generated data/checkpoints, ignored by git later
+    memory/            # generated TradingAgents memory, ignored by git later
+```
+
+## Cost-control design
+
+The upstream project can burn API tokens because it runs many agents and debates. This wrapper keeps the TradingAgents architecture but narrows the default run:
+
+| Layer | Upstream/full behavior | Flip default |
+|---|---|---|
+| Analysts | market, social, news, fundamentals | market, news |
+| News articles | 20 ticker / 10 global | 5 ticker / 3 global |
+| Debate | configurable multi-round | 1 round |
+| Risk debate | configurable multi-round | 1 round |
+| Checkpoints | opt-in | on |
+| Memory/cache | global `~/.tradingagents` | local `trading-desk/` |
+| Output | terminal + logs | terminal + JSON in `runs/` |
+
+Use `--full` only when the user specifically wants the expensive analyst stack.
+
+## Setup
+
+Invoke through the `terminal` tool or a shell:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+bash scripts/setup.sh
+```
+
+Then edit `.env` from `.env.example` and add the keys.
+
+Minimum recommended key:
+
+```text
+DEEPSEEK_API_KEY=...
+```
+
+Optional:
+
+```text
+MINIMAX_API_KEY=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GOOGLE_API_KEY=...
+OPENROUTER_API_KEY=...
+ALPHA_VANTAGE_API_KEY=...
+FRED_API_KEY=...
+```
+
+## Run examples
+
+Cheap/default desk pass:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+source .venv/bin/activate
+python scripts/run_desk_analysis.py AAPL --date 2026-07-01
+```
+
+Use only technical/market analyst:
+
+```bash
+python scripts/run_desk_analysis.py SPY --analysts market --date 2026-07-01
+```
+
+Use market + news + fundamentals, still capped:
+
+```bash
+python scripts/run_desk_analysis.py NVDA --analysts market,news,fundamentals --date 2026-07-01
+```
+
+Full expensive mode:
+
+```bash
+python scripts/run_desk_analysis.py NVDA --full --date 2026-07-01
+```
+
+Test provider/model override:
+
+```bash
+python scripts/run_desk_analysis.py AAPL \
+  --provider deepseek \
+  --quick-model deepseek-chat \
+  --deep-model deepseek-chat
+```
+
+If a provider exposes `deepseek-v4-flash` or `minimax-m3`, swap via `.env` or flags:
+
+```bash
+TRADINGAGENTS_QUICK_THINK_LLM=deepseek-v4-flash
+TRADINGAGENTS_DEEP_THINK_LLM=minimax-m3
+```
+
+Verify exact model IDs with the provider before relying on marketing names.
+
+## TradingAgents source reference
+
+Upstream repo: `https://github.com/TauricResearch/TradingAgents`
+
+Key upstream facts used here:
+
+- Installed command: `tradingagents`
+- Python API: `TradingAgentsGraph().propagate(ticker, date)`
+- Config source: `tradingagents/default_config.py`
+- Env overrides:
+  - `TRADINGAGENTS_LLM_PROVIDER`
+  - `TRADINGAGENTS_DEEP_THINK_LLM`
+  - `TRADINGAGENTS_QUICK_THINK_LLM`
+  - `TRADINGAGENTS_LLM_BACKEND_URL`
+  - `TRADINGAGENTS_MAX_DEBATE_ROUNDS`
+  - `TRADINGAGENTS_MAX_RISK_ROUNDS`
+  - `TRADINGAGENTS_CHECKPOINT_ENABLED`
+  - `TRADINGAGENTS_TEMPERATURE`
+  - `TRADINGAGENTS_CACHE_DIR`
+  - `TRADINGAGENTS_RESULTS_DIR`
+  - `TRADINGAGENTS_MEMORY_LOG_PATH`
+
+## Next fixes to build
+
+1. Add a Discord command wrapper: `!desk AAPL`, `!deskfull NVDA`, `!deskrisk SPY`.
+2. Add a small SQLite run ledger for costs, symbols, timestamps, and decisions.
+3. Add a hard monthly API spend cap before every run.
+4. Add a provider router later if MiniMax/DeepSeek/OpenRouter IDs are verified.
+5. Add paper-trading execution only after the research layer proves useful.
+
+## GitHub push/update instructions for Flip
+
+The server currently does not have `gh` installed, so the simplest write path is plain git with a GitHub fine-grained token.
+
+Flip should create a token:
+
+1. GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens.
+2. Resource owner: `luphillip041-hub`.
+3. Repository access: select `Ai-digital` or all repos.
+4. Permissions:
+   - Contents: Read and write
+   - Pull requests: Read and write
+   - Metadata: Read-only
+5. Expiration: short, e.g. 7 or 30 days.
+6. Send the token privately, not in a public channel.
+
+Then updates can be pushed with:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital
+git checkout -b feat/flip-trading-desk
+git add trading-desk README.md .gitignore
+git commit -m "feat: add low-burn trading desk"
+git push https://TOKEN@github.com/luphillip041-hub/Ai-digital.git feat/flip-trading-desk
+```
+
+After that, open a PR from `feat/flip-trading-desk` into the repo's default branch.
