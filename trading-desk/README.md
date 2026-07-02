@@ -111,6 +111,14 @@ python scripts/run_desk_analysis.py AAPL --model-profile balanced
 python scripts/run_desk_analysis.py AAPL --model-profile local --backend-url http://localhost:1234/v1
 ```
 
+OpenAlice cockpit prompt:
+
+```bash
+python scripts/openalice_bridge.py --symbols SPY,QQQ,NVDA,TSLA --max-finalists 3
+```
+
+See `trading-desk/openalice/README.md` for install/start/headless details.
+
 Use only technical/market analyst:
 
 ```bash
@@ -175,6 +183,7 @@ Key upstream facts used here:
 - Reduced default analyst set and capped news pulls.
 - Named model profiles: `cheap`, `balanced`, `local`.
 - Zero-LLM watchlist scanner for broad symbol triage.
+- OpenAlice cockpit bridge without vendoring AGPL code.
 - Preflight mode to estimate LLM/tool usage before spending tokens.
 - SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.
 - Monthly estimated LLM-call cap before every non-preflight run.

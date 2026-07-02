@@ -5,6 +5,7 @@ trading-desk/.venv/
 trading-desk/.cache/
 trading-desk/runs/
 trading-desk/memory/
+trading-desk/.openalice/
 trading-desk/__pycache__/
 trading-desk/scripts/__pycache__/
 
