@@ -2,3 +2,5 @@ tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git
 python-dotenv>=1.0.0
 yfinance>=1.4.1
 discord.py>=2.4.0
+streamlit>=1.37.0
+pandas>=2.0.0

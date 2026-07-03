@@ -16,13 +16,19 @@ Isolated trading-research desk for <@832503719866007552>, built around TauricRes
 Ai-digital/
   app/                 # existing Next.js revenue app, left untouched
   trading-desk/        # Flip trading desk starts here
+    README.md
     .env.example
     requirements.txt
+    Dockerfile
+    docker-compose.yml
     scripts/
       setup.sh
       scan_watchlist.py
+      options_signal_scanner.py
       run_desk_analysis.py
       openalice_bridge.py
+    ui/
+      dashboard.py
     docs/
       options_scanner_playbook.md
       sample_options_signal.md
@@ -30,8 +36,6 @@ Ai-digital/
       discord_bot.py
     deploy/
       flip-trading-desk-bot.service
-    Dockerfile
-    docker-compose.yml
     runs/              # generated decisions, ignored by git later
     .cache/            # generated data/checkpoints, ignored by git later
     memory/            # generated TradingAgents memory, ignored by git later
@@ -133,6 +137,42 @@ sudo journalctl -u flip-trading-desk-bot -f
 ```
 
 The bot queues `!desk`/`!deskfull` one at a time so Discord users cannot accidentally spawn five expensive model runs at once.
+
+## Web UI — command-center dashboard
+
+The Streamlit UI gives the desk a dark, glassy command-center front end:
+
+- Home launchpad
+- zero-LLM stock scanner
+- options signal cards
+- active strategy workspace
+- payoff sketch for selected contract
+- run artifacts / budget ledger
+- diagnostics and key-presence checks
+
+Run locally:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+source .venv/bin/activate
+streamlit run ui/dashboard.py --server.port 8512 --server.address 0.0.0.0
+```
+
+Run with Docker Compose:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+docker compose up -d --build flip-trading-desk-ui
+docker compose logs -f flip-trading-desk-ui
+```
+
+Open:
+
+```text
+http://localhost:8512
+```
+
+If the VPS exposes the port publicly, use the server IP with `:8512`.
 
 ## Run examples
 
@@ -258,6 +298,7 @@ Key upstream facts used here:
 - Zero-LLM options signal scanner with chart setup, chain liquidity, IV/expected-move context, and management plan.
 - OpenAlice cockpit bridge without vendoring AGPL code.
 - Discord command bot for shared server access.
+- Streamlit command-center UI for scanner/options/workspace/runs/diagnostics.
 - Docker Compose and systemd deployment for 24/7 operation.
 - Preflight mode to estimate LLM/tool usage before spending tokens.
 - SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.

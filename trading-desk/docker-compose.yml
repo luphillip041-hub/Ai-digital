@@ -21,3 +21,29 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  flip-trading-desk-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flip-trading-desk-ui
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["streamlit", "run", "ui/dashboard.py", "--server.address=0.0.0.0", "--server.port=8512", "--server.headless=true"]
+    ports:
+      - "8512:8512"
+    environment:
+      TRADINGAGENTS_CACHE_DIR: /app/trading-desk/.cache
+      TRADINGAGENTS_RESULTS_DIR: /app/trading-desk/runs
+      TRADINGAGENTS_MEMORY_LOG_PATH: /app/trading-desk/memory/trading_memory.md
+      FLIP_DESK_PYTHON: python
+    volumes:
+      - ./runs:/app/trading-desk/runs
+      - ./.cache:/app/trading-desk/.cache
+      - ./memory:/app/trading-desk/memory
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8512/_stcore/health >/dev/null"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
