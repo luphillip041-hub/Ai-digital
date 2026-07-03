@@ -95,6 +95,17 @@ DEEPSEEK_API_KEY=...
 
 The engine speaks the OpenAI-compatible chat API, so `deepseek`, `openai`, `openrouter`, or any `openai_compatible` local endpoint works. Verify exact model IDs in your provider console and set `FLIP_DESK_QUICK_MODEL` / `FLIP_DESK_DEEP_MODEL` accordingly.
 
+## Market data: Alpaca or Yahoo
+
+The scanner and the desk pull daily bars and headlines through one shared data layer with two sources:
+
+| Source | What it needs | Notes |
+|---|---|---|
+| `alpaca` | `ALPACA_API_KEY` + `ALPACA_SECRET_KEY` (same vars as the repo's Alpaca bot) | Alpaca Market Data REST API, free `iex` feed by default; stocks/ETFs |
+| `yahoo` | nothing | yfinance; also covers crypto-style symbols like `BTC-USD` |
+
+Default `FLIP_DESK_DATA_SOURCE=auto` prefers Alpaca when keys are set and falls back to Yahoo per symbol (crypto pairs, Alpaca outage). Force one with `--data-source alpaca|yahoo` on either script. The LLM side is independent — DeepSeek (or any provider) analyzes whatever data source supplied.
+
 ## Discord bot — shared 24/7 access
 
 Commands available to everyone in allowed Discord channels:

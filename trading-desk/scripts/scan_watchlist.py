@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Zero-LLM market scanner for Flip's trading desk.
 
-Run this across a watchlist before spending tokens on TradingAgents. It uses
-Yahoo Finance OHLCV only, scores candidates deterministically, and writes a
-compact JSON shortlist that `run_desk_analysis.py` can consume manually.
+Run this across a watchlist before spending tokens on the multi-agent desk.
+It pulls daily OHLCV from the shared data layer (Alpaca when keys are set,
+Yahoo otherwise), scores candidates deterministically, and writes a compact
+JSON shortlist that `run_desk_analysis.py` can consume manually.
 """
 
 from __future__ import annotations
@@ -11,11 +12,15 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from desk_agents.marketdata import fetch_ohlcv  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -34,17 +39,7 @@ class ScanResult:
     twenty_day_return_pct: float | None = None
     why: list[str] = field(default_factory=list)
     risk_flags: list[str] = field(default_factory=list)
-
-
-def _load_yfinance():
-    try:
-        import yfinance as yf  # type: ignore
-    except Exception as exc:  # pragma: no cover - dependency/environment specific
-        raise SystemExit(
-            "yfinance is required. Run `bash trading-desk/scripts/setup.sh` first. "
-            f"Original error: {exc!r}"
-        ) from exc
-    return yf
+    source: str = "none"
 
 
 def _sma(values: list[float], n: int) -> float | None:
@@ -88,22 +83,19 @@ def _pct(curr: float, prev: float) -> float | None:
     return (curr / prev - 1) * 100
 
 
-def scan_symbol(symbol: str, *, lookback: str, min_score: float) -> ScanResult:
-    yf = _load_yfinance()
-    hist = yf.Ticker(symbol).history(period=lookback, interval="1d", auto_adjust=True)
-    if hist is None or hist.empty or len(hist) < 55:
+def scan_symbol(symbol: str, *, lookback: str, min_score: float, source: str | None = None) -> ScanResult:
+    data = fetch_ohlcv(symbol, lookback=lookback, source=source)
+    if not data.ok:
         return ScanResult(
             symbol=symbol.upper(),
             score=0,
             bias="neutral",
             eligible=False,
-            risk_flags=["insufficient_price_history"],
+            risk_flags=[data.error or "insufficient_price_history"],
+            source=data.source,
         )
 
-    closes = [float(x) for x in hist["Close"].tolist()]
-    highs = [float(x) for x in hist["High"].tolist()]
-    lows = [float(x) for x in hist["Low"].tolist()]
-    volumes = [float(x) for x in hist["Volume"].tolist()]
+    closes, highs, lows, volumes = data.closes, data.highs, data.lows, data.volumes
     close = closes[-1]
     ma20 = _sma(closes, 20)
     ma50 = _sma(closes, 50)
@@ -180,6 +172,7 @@ def scan_symbol(symbol: str, *, lookback: str, min_score: float) -> ScanResult:
         twenty_day_return_pct=clean(ret20),
         why=why,
         risk_flags=flags,
+        source=data.source,
     )
 
 
@@ -189,6 +182,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lookback", default="6mo")
     parser.add_argument("--min-score", type=float, default=60)
     parser.add_argument("--max-finalists", type=int, default=5)
+    parser.add_argument("--data-source", choices=("auto", "alpaca", "yahoo"), default=None,
+                        help="Market data source; default auto (Alpaca when keys are set)")
     parser.add_argument("--out", default=str(ROOT / "runs" / "scanner_latest.json"))
     return parser.parse_args()
 
@@ -196,13 +191,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
-    results = [scan_symbol(s, lookback=args.lookback, min_score=args.min_score) for s in symbols]
+    results = [scan_symbol(s, lookback=args.lookback, min_score=args.min_score, source=args.data_source) for s in symbols]
     results.sort(key=lambda r: r.score, reverse=True)
     finalists = [r for r in results if r.eligible][: args.max_finalists]
     payload = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "lookback": args.lookback,
         "min_score": args.min_score,
+        "data_sources": sorted({r.source for r in results}),
         "max_finalists": args.max_finalists,
         "finalists": [asdict(r) for r in finalists],
         "ranked": [asdict(r) for r in results],

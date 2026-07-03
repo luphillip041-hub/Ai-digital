@@ -266,6 +266,7 @@ def build_config(args: argparse.Namespace) -> dict[str, Any]:
         "max_risk_discuss_rounds": args.risk_rounds,
         "news_article_limit": args.news_limit,
         "lookback": args.lookback,
+        "data_source": args.data_source,
         "temperature": args.temperature,
         "max_output_tokens": args.max_output_tokens,
         "results_dir": str((ROOT / "runs").resolve()),
@@ -299,6 +300,7 @@ def make_payload(
             "max_risk_discuss_rounds": cfg.get("max_risk_discuss_rounds"),
             "news_article_limit": cfg.get("news_article_limit"),
             "lookback": cfg.get("lookback"),
+            "data_source": cfg.get("data_source"),
             "max_output_tokens": cfg.get("max_output_tokens"),
             "results_dir": cfg.get("results_dir"),
         },
@@ -336,6 +338,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-rounds", type=int, default=1)
     parser.add_argument("--news-limit", type=int, default=5)
     parser.add_argument("--lookback", default="6mo", help="Price history window for the market brief")
+    parser.add_argument(
+        "--data-source",
+        choices=("auto", "alpaca", "yahoo"),
+        default=os.getenv("FLIP_DESK_DATA_SOURCE", "auto"),
+        help="Market data source. auto = Alpaca when ALPACA_API_KEY/SECRET are set, else Yahoo.",
+    )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-output-tokens", type=int, default=int(os.getenv("FLIP_DESK_MAX_OUTPUT_TOKENS", "700")))
     parser.add_argument(
@@ -423,6 +431,7 @@ def main() -> None:
             risk_rounds=args.risk_rounds,
             news_limit=args.news_limit,
             lookback=args.lookback,
+            data_source=args.data_source,
         )
         result = desk.run(args.ticker, args.date, analysts)
         payload = make_payload(args=args, analysts=analysts, cfg=cfg, estimate=estimate,

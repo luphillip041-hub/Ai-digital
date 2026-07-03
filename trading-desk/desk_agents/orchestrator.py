@@ -97,6 +97,7 @@ class DeskOrchestrator:
         risk_rounds: int = 1,
         news_limit: int = 5,
         lookback: str = "6mo",
+        data_source: str | None = None,
         log=print,
     ):
         self.quick_client = ChatClient(quick)
@@ -105,6 +106,7 @@ class DeskOrchestrator:
         self.risk_rounds = max(1, risk_rounds)
         self.news_limit = news_limit
         self.lookback = lookback
+        self.data_source = data_source
         self.log = log
         self.meter = UsageMeter()
 
@@ -118,8 +120,13 @@ class DeskOrchestrator:
 
         # Stage 0 — deterministic data, zero LLM calls.
         self.log(f"[desk] gathering data for {ticker} (0 LLM calls)")
-        brief = fetch_market_brief(ticker, lookback=self.lookback)
-        headlines = fetch_headlines(ticker, limit=self.news_limit) if "news" in analysts else []
+        brief = fetch_market_brief(ticker, lookback=self.lookback, source=self.data_source)
+        self.log(f"[desk] market data source: {brief.source}")
+        headlines = (
+            fetch_headlines(ticker, limit=self.news_limit, source=self.data_source)
+            if "news" in analysts
+            else []
+        )
         fundamentals = fetch_fundamentals(ticker) if "fundamentals" in analysts else {}
 
         # Stage 1 — analyst sub-agents, one call each.
