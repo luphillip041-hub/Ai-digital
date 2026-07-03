@@ -1,14 +1,38 @@
 # Flip Trading Desk
 
-Isolated trading-research desk for <@832503719866007552>, built around TauricResearch/TradingAgents without mixing into Taylor/Slam projects. This folder is intended to contain every trading-desk artifact for Flip: config, runs, cache, memory, scripts, and future bot glue.
+Isolated trading-research desk for Flip, powered by a **native multi-agent engine** (`desk_agents/`) built into this repo — no external agent framework dependency. This folder contains every trading-desk artifact: config, runs, cache, scripts, Discord bot, and deploy files.
 
 ## What this is
 
-- A low-token wrapper around `TauricResearch/TradingAgents`.
-- Defaults to fewer analysts, fewer news articles, one bull/bear debate round, one risk round, local checkpointing, and local memory.
-- Produces structured JSON decisions for Discord bot/web dashboard integration.
-- Includes a Discord command bot for shared 24/7 server access.
+- An orchestrator + sub-agent research pipeline: analysts → bull/bear debate → research manager → trader → risk manager → portfolio manager.
+- Each sub-agent runs with its own isolated conversation history; the orchestrator controls exactly what flows between them, so prompts stay small and call counts stay flat.
+- All market data is fetched **deterministically before any agent runs** (zero LLM tool loops), so every run's LLM-call count is exact and known in advance.
+- Produces structured JSON decisions for the Discord bot / dashboards.
 - Research/paper-trading scaffold only — not financial advice and not auto-execution.
+
+## Architecture
+
+```text
+scan_watchlist.py (0 LLM calls)          run_desk_analysis.py
+  score watchlist deterministically  →     budget guard (exact call plan vs monthly cap)
+  pick finalists                             │
+                                             ▼
+                                     DeskOrchestrator (desk_agents/)
+                                       stage 0  fetch OHLCV/news/fundamentals   0 calls
+                                       stage 1  analyst sub-agents              1 call each
+                                                market · news · fundamentals · social
+                                       stage 2  bull vs bear debate             2 calls/round
+                                       stage 3  research manager (deep model)   1 call
+                                                trader                          1 call
+                                                risk manager                    1 call/round
+                                                portfolio manager (deep model)  1 call → JSON
+                                             │
+                                             ▼
+                                     runs/<TICKER>_<date>.json + SQLite ledger
+                                     (planned AND actual calls + tokens recorded)
+```
+
+Default team (market+news, 1 debate round, 1 risk round): **exactly 8 LLM calls**. Full stack (`--full`): 10 calls.
 
 ## Folder boundary
 
@@ -18,6 +42,11 @@ Ai-digital/
   trading-desk/        # Flip trading desk starts here
     .env.example
     requirements.txt
+    desk_agents/       # native multi-agent engine
+      llm.py           #   provider-agnostic chat client + usage meter
+      subagent.py      #   sub-agent primitive (isolated history)
+      marketdata.py    #   deterministic data layer (indicators/news/fundamentals)
+      orchestrator.py  #   the desk team + pipeline
     scripts/
       setup.sh
       scan_watchlist.py
@@ -29,39 +58,34 @@ Ai-digital/
       flip-trading-desk-bot.service
     Dockerfile
     docker-compose.yml
-    runs/              # generated decisions, ignored by git later
-    .cache/            # generated data/checkpoints, ignored by git later
-    memory/            # generated TradingAgents memory, ignored by git later
+    runs/              # generated decisions + ledger, ignored by git
+    .cache/            # generated data, ignored by git
 ```
 
 ## Cost-control design
 
-The upstream project can burn API tokens because it runs many agents and debates. This wrapper keeps the TradingAgents architecture but narrows the default run:
-
-| Layer | Upstream/full behavior | Flip default |
+| Layer | Typical multi-agent framework | Flip desk |
 |---|---|---|
-| Analysts | market, social, news, fundamentals | market, news |
-| News articles | 20 ticker / 10 global | 5 ticker / 3 global |
-| Debate | configurable multi-round | 1 round |
-| Risk debate | configurable multi-round | 1 round |
-| Checkpoints | opt-in | on |
-| Memory/cache | global `~/.tradingagents` | local `trading-desk/` |
-| Budget guard | none | local SQLite estimated-call cap |
-| Model profile | manual | `cheap`, `balanced`, or `local` preset |
-| Output | terminal + logs | terminal + JSON in `runs/` |
+| Tool loops | LLM decides, count varies | none — data pre-fetched deterministically |
+| Call count | estimated | **exact plan**, enforced pre-run |
+| Usage tracking | none | actual calls + tokens recorded per run |
+| Analysts | all | market, news (opt-in fundamentals/social) |
+| Debate | multi-round | 1 round default |
+| Output tokens | unbounded | capped per call (`FLIP_DESK_MAX_OUTPUT_TOKENS`) |
+| Budget guard | none | SQLite monthly call cap, `--force` to override |
+| Model routing | one model | quick model for most agents, deep model for synthesis/final call |
+| Offline mode | none | `--model-profile offline` runs the whole pipeline with zero network/keys |
 
-Use `--full` only when the user specifically wants the expensive analyst stack.
+Use `--full` only when you specifically want the expensive four-analyst stack.
 
 ## Setup
 
-Invoke through the `terminal` tool or a shell:
-
 ```bash
-cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+cd trading-desk
 bash scripts/setup.sh
 ```
 
-Then edit `.env` from `.env.example` and add the keys.
+Then edit `.env` from `.env.example` and add keys.
 
 Minimum recommended key:
 
@@ -69,17 +93,7 @@ Minimum recommended key:
 DEEPSEEK_API_KEY=...
 ```
 
-Optional:
-
-```text
-MINIMAX_API_KEY=...
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-GOOGLE_API_KEY=...
-OPENROUTER_API_KEY=...
-ALPHA_VANTAGE_API_KEY=...
-FRED_API_KEY=...
-```
+The engine speaks the OpenAI-compatible chat API, so `deepseek`, `openai`, `openrouter`, or any `openai_compatible` local endpoint works. Verify exact model IDs in your provider console and set `FLIP_DESK_QUICK_MODEL` / `FLIP_DESK_DEEP_MODEL` accordingly.
 
 ## Discord bot — shared 24/7 access
 
@@ -87,10 +101,10 @@ Commands available to everyone in allowed Discord channels:
 
 ```text
 !scan SPY,QQQ,NVDA,TSLA  # zero-LLM watchlist scanner
-!preflight AAPL          # budget/model check, no LLM spend
-!desk AAPL               # low-burn desk analysis
-!deskfull NVDA           # expensive full analyst stack
-!budget                  # monthly estimated LLM-call ledger
+!preflight AAPL          # exact call plan + budget check, no LLM spend
+!desk AAPL               # low-burn multi-agent analysis (8 calls)
+!deskfull NVDA           # full four-analyst stack (10 calls)
+!budget                  # monthly LLM-call ledger (actual usage)
 !runs                    # recent saved JSON artifacts
 !deskhelp                # command help
 ```
@@ -101,12 +115,11 @@ Create a Discord bot token:
 2. Enable **Message Content Intent**.
 3. Invite with `View Channels`, `Send Messages`, `Read Message History`.
 4. Put the token in `.env` as `DISCORD_BOT_TOKEN=...`.
-5. Optional: set `FLIP_DESK_ALLOWED_GUILD_IDS` / `FLIP_DESK_ALLOWED_CHANNEL_IDS` to comma-separated IDs.
+5. Recommended: set `FLIP_DESK_ALLOWED_GUILD_IDS` / `FLIP_DESK_ALLOWED_CHANNEL_IDS` so only your channels can spend budget.
 
 Run locally:
 
 ```bash
-cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
 source .venv/bin/activate
 bash scripts/run_discord_bot.sh
 ```
@@ -114,7 +127,6 @@ bash scripts/run_discord_bot.sh
 Run 24/7 with Docker:
 
 ```bash
-cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
 docker compose up -d --build
 docker compose logs -f flip-trading-desk-bot
 ```
@@ -135,38 +147,55 @@ The bot queues `!desk`/`!deskfull` one at a time so Discord users cannot acciden
 Zero-token watchlist scan first:
 
 ```bash
-cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
-source .venv/bin/activate
 python scripts/scan_watchlist.py --symbols SPY,QQQ,NVDA,TSLA,SMH,AAPL,MSFT --max-finalists 3
 ```
 
 Cheap/default desk pass on a scanner finalist:
 
 ```bash
-cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
-source .venv/bin/activate
 python scripts/run_desk_analysis.py AAPL --date 2026-07-01
 ```
 
-Preflight only — shows config, analyst set, estimated LLM calls, and monthly budget without calling any model:
+Preflight only — exact call plan and monthly budget, no model calls:
 
 ```bash
-python scripts/run_desk_analysis.py AAPL --date 2026-07-01 --preflight-only
+python scripts/run_desk_analysis.py AAPL --preflight-only
 ```
 
-Use the local monthly cap guard. Default is `250` estimated LLM calls/month; override intentionally:
+Offline dry run — full pipeline, deterministic canned agents, zero network/keys:
+
+```bash
+python scripts/run_desk_analysis.py AAPL --model-profile offline
+```
+
+Monthly cap guard (default 250 calls/month):
 
 ```bash
 python scripts/run_desk_analysis.py NVDA --monthly-llm-call-cap 1000
 python scripts/run_desk_analysis.py NVDA --force   # bypass cap once
 ```
 
-Model routing presets:
+Model routing:
 
 ```bash
 python scripts/run_desk_analysis.py AAPL --model-profile cheap
 python scripts/run_desk_analysis.py AAPL --model-profile balanced
 python scripts/run_desk_analysis.py AAPL --model-profile local --backend-url http://localhost:1234/v1
+python scripts/run_desk_analysis.py AAPL --quick-model deepseek-v4-flash --deep-model deepseek-v4-pro
+```
+
+Analyst selection:
+
+```bash
+python scripts/run_desk_analysis.py SPY --analysts market
+python scripts/run_desk_analysis.py NVDA --analysts market,news,fundamentals
+python scripts/run_desk_analysis.py NVDA --full
+```
+
+Extra debate scrutiny (costs 2 more calls per round):
+
+```bash
+python scripts/run_desk_analysis.py NVDA --debate-rounds 2
 ```
 
 OpenAlice cockpit prompt:
@@ -177,107 +206,29 @@ python scripts/openalice_bridge.py --symbols SPY,QQQ,NVDA,TSLA --max-finalists 3
 
 See `trading-desk/openalice/README.md` for install/start/headless details.
 
-Use only technical/market analyst:
+## The sub-agent team
 
-```bash
-python scripts/run_desk_analysis.py SPY --analysts market --date 2026-07-01
-```
+| Agent | Model tier | Job |
+|---|---|---|
+| market_analyst | quick | trend/momentum/volatility read from the indicator snapshot |
+| news_analyst | quick | catalyst and binary-event risk from capped headlines |
+| fundamentals_analyst | quick | valuation/growth/balance-sheet read (opt-in) |
+| sentiment_analyst | quick | positioning/crowd read (opt-in, `social`) |
+| bull_researcher | quick | strongest honest long case; rebuts the bear across rounds |
+| bear_researcher | quick | strongest honest bear case; rebuts the bull across rounds |
+| research_manager | deep | weighs the debate, issues thesis + conviction |
+| trader | quick | entry/stop/target/time-limit/size paper plan (max 5% of book) |
+| risk_manager | quick | aggressive/conservative/neutral stress + verdict |
+| portfolio_manager | deep | final authority; emits strict JSON decision |
 
-Use market + news + fundamentals, still capped:
+Each agent sees only what the orchestrator hands it — never another agent's raw history. The bull and bear keep their own private histories across debate rounds, so rebuttals are genuinely stateful.
 
-```bash
-python scripts/run_desk_analysis.py NVDA --analysts market,news,fundamentals --date 2026-07-01
-```
+## Ledger
 
-Full expensive mode:
-
-```bash
-python scripts/run_desk_analysis.py NVDA --full --date 2026-07-01
-```
-
-Test provider/model override:
-
-```bash
-python scripts/run_desk_analysis.py AAPL \
-  --provider deepseek \
-  --quick-model deepseek-v4-flash \
-  --deep-model deepseek-v4-pro
-```
-
-If a provider exposes OpenRouter-style IDs, swap via `.env` or flags:
-
-```bash
-TRADINGAGENTS_QUICK_THINK_LLM=deepseek-v4-flash
-TRADINGAGENTS_DEEP_THINK_LLM=minimax-m3
-```
-
-Verify exact model IDs with the provider before relying on marketing names.
-
-## TradingAgents source reference
-
-Upstream repo: `https://github.com/TauricResearch/TradingAgents`
-
-Key upstream facts used here:
-
-- Installed command: `tradingagents`
-- Python API: `TradingAgentsGraph().propagate(ticker, date)`
-- Config source: `tradingagents/default_config.py`
-- Env overrides:
-  - `TRADINGAGENTS_LLM_PROVIDER`
-  - `TRADINGAGENTS_DEEP_THINK_LLM`
-  - `TRADINGAGENTS_QUICK_THINK_LLM`
-  - `TRADINGAGENTS_LLM_BACKEND_URL`
-  - `TRADINGAGENTS_MAX_DEBATE_ROUNDS`
-  - `TRADINGAGENTS_MAX_RISK_ROUNDS`
-  - `TRADINGAGENTS_CHECKPOINT_ENABLED`
-  - `TRADINGAGENTS_TEMPERATURE`
-  - `TRADINGAGENTS_CACHE_DIR`
-  - `TRADINGAGENTS_RESULTS_DIR`
-  - `TRADINGAGENTS_MEMORY_LOG_PATH`
-
-## Built improvements
-
-- Isolated project-local cache/results/memory.
-- Reduced default analyst set and capped news pulls.
-- Named model profiles: `cheap`, `balanced`, `local`.
-- Zero-LLM watchlist scanner for broad symbol triage.
-- OpenAlice cockpit bridge without vendoring AGPL code.
-- Discord command bot for shared server access.
-- Docker Compose and systemd deployment for 24/7 operation.
-- Preflight mode to estimate LLM/tool usage before spending tokens.
-- SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.
-- Monthly estimated LLM-call cap before every non-preflight run.
+SQLite at `runs/desk_ledger.sqlite3`. Every run records the planned call count, and completed runs also record **actual** calls plus prompt/completion tokens from provider usage data. The monthly budget check prefers actuals when available. Existing ledgers from the previous engine are migrated automatically (new columns added in place).
 
 ## Next fixes to build
 
-1. Add a small dashboard for scan/runs/budget visibility.
-2. Add deterministic position-risk engine before any paper trade adapter.
-3. Add paper-trading execution only after the research layer proves useful.
-
-## GitHub push/update instructions for Flip
-
-The server currently does not have `gh` installed, so the simplest write path is plain git with a GitHub fine-grained token.
-
-Flip should create a token:
-
-1. GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens.
-2. Resource owner: `luphillip041-hub`.
-3. Repository access: select `Ai-digital` or all repos.
-4. Permissions:
-   - Contents: Read and write
-   - Pull requests: Read and write
-   - Metadata: Read-only
-5. Expiration: short, e.g. 7 or 30 days.
-6. Send the token privately, not in a public channel.
-
-Then updates can be pushed with:
-
-```bash
-cd /root/flip/projects/trading-desk/Ai-digital
-git checkout -b feat/flip-trading-desk
-git add trading-desk README.md .gitignore
-git commit -m "feat: add low-burn trading desk"
-git push https://TOKEN@github.com/luphillip041-hub/Ai-digital.git feat/flip-trading-desk
-```
-
-After that, open a PR from `feat/flip-trading-desk` into the repo's default branch.
+1. Small dashboard for scan/runs/budget visibility.
+2. Deterministic position-risk engine before any paper trade adapter.
+3. Paper-trading execution only after the research layer proves useful.

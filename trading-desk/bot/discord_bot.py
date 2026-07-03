@@ -302,7 +302,7 @@ async def on_message(message: discord.Message) -> None:
             return
 
         if cmd == "scan":
-            symbols = args[0] if args else DEFAULT_SYMBOLS
+            symbols = ",".join(a.strip(",") for a in args) if args else DEFAULT_SYMBOLS
             out = RUNS_DIR / f"discord_scan_{_now_stamp()}.json"
             thinking = await message.reply("🔎 scanning watchlist — zero LLM calls…", mention_author=False)
             result = await run_cmd(
