@@ -1,0 +1,16 @@
+[Unit]
+Description=Flip Trading Desk Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/flip/projects/trading-desk/Ai-digital/trading-desk
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/root/flip/projects/trading-desk/Ai-digital/trading-desk/.venv/bin/python -u bot/discord_bot.py
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

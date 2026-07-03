@@ -19,3 +19,12 @@ bot.out
 node_modules/
 bot.pid
 backtest_results.png
+
+# Flip trading desk local/runtime files
+trading-desk/.env
+trading-desk/.env.local
+trading-desk/.venv/
+trading-desk/.cache/
+trading-desk/runs/
+trading-desk/memory/
+trading-desk/.openalice/
