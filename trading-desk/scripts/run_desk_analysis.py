@@ -423,6 +423,7 @@ def main() -> None:
         max_output_tokens=args.max_output_tokens,
     )
 
+    desk = None
     try:
         desk = DeskOrchestrator(
             quick=quick_cfg,
@@ -441,11 +442,13 @@ def main() -> None:
                    profile=args.model_profile, estimate=estimate, status="completed",
                    json_out=str(out), usage=result.get("usage"))
     except Exception as exc:
+        # Bill the ledger for what the failed run actually spent, not the plan.
+        spent = desk.meter.as_dict() if desk else {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
         save(make_payload(args=args, analysts=analysts, cfg=cfg, estimate=estimate, budget=budget,
                           status="error", error=repr(exc)))
         record_run(conn, ticker=args.ticker, trade_date=args.date, analysts=analysts, cfg=cfg,
                    profile=args.model_profile, estimate=estimate, status="error",
-                   json_out=str(out), error=repr(exc))
+                   json_out=str(out), error=repr(exc), usage=spent)
         raise
 
     usage = payload.get("usage") or {}
