@@ -54,7 +54,7 @@ python - <<'PYEOF'
 import os, re, pathlib
 env = pathlib.Path(".env")
 text = env.read_text()
-for var in ("DEEPSEEK_API_KEY", "ALPACA_API_KEY", "ALPACA_SECRET_KEY", "DISCORD_BOT_TOKEN"):
+for var in ("DEEPSEEK_API_KEY", "ALPACA_API_KEY", "ALPACA_SECRET_KEY", "DISCORD_BOT_TOKEN", "FLIP_DESK_DISCORD_WEBHOOK_URL"):
     val = os.environ.get(var)
     if not val:
         continue
@@ -64,8 +64,40 @@ for var in ("DEEPSEEK_API_KEY", "ALPACA_API_KEY", "ALPACA_SECRET_KEY", "DISCORD_
     else:
         text += "\n" + line
 env.write_text(text)
-print("  keys set:", ", ".join(v for v in ("DEEPSEEK_API_KEY","ALPACA_API_KEY","ALPACA_SECRET_KEY","DISCORD_BOT_TOKEN") if os.environ.get(v)) or "none (edit .env manually)")
+print("  keys set:", ", ".join(v for v in ("DEEPSEEK_API_KEY","ALPACA_API_KEY","ALPACA_SECRET_KEY","DISCORD_BOT_TOKEN","FLIP_DESK_DISCORD_WEBHOOK_URL") if os.environ.get(v)) or "none (edit .env manually)")
 PYEOF
+
+if [ "$TICKER" = "cron" ]; then
+  say "④ Installing the daily autopilot cron job"
+  if ! command -v crontab >/dev/null 2>&1; then
+    echo "crontab not available on this machine — add this line to your scheduler manually:"
+    echo "  5 10 * * 1-5 cd $DIR/trading-desk && .venv/bin/python scripts/autopilot.py --execute >> runs/autopilot_cron.log 2>&1"
+    exit 1
+  fi
+  CRON_LINE="5 10 * * 1-5 cd $DIR/trading-desk && .venv/bin/python scripts/autopilot.py --execute >> runs/autopilot_cron.log 2>&1"
+  ( crontab -l 2>/dev/null | grep -v "trading-desk && .venv/bin/python scripts/autopilot.py" ; echo "$CRON_LINE" ) | crontab -
+  echo "  installed: weekdays 10:05 (LOCAL time — adjust with: crontab -e)"
+  echo "  log: $DIR/trading-desk/runs/autopilot_cron.log"
+  say "⑤ Test pass now (dry-run — no orders, posts to Discord if webhook set)"
+  python scripts/autopilot.py || true
+  python - <<'NOTIFY'
+import sys
+sys.path.insert(0, ".")
+from desk_agents.notify import post_discord, webhook_configured
+if webhook_configured():
+    ok = post_discord("🟢 **Flip Desk online** — daily autopilot scheduled for weekdays 10:05 (local). "
+                      "Executed passes will report here.")
+    print("  discord hello:", "sent" if ok else "FAILED — check the webhook URL")
+else:
+    print("  no webhook configured — set FLIP_DESK_DISCORD_WEBHOOK_URL in .env for Discord updates")
+NOTIFY
+  say "Done. The desk now trades paper daily. Useful commands:"
+  echo "  crontab -l                                    # see the schedule"
+  echo "  tail -f $DIR/trading-desk/runs/autopilot_cron.log"
+  echo "  caffeinate note: the Mac must be awake at run time — System Settings → Energy →"
+  echo "  prevent automatic sleeping, or: sudo pmset -a sleep 0"
+  exit 0
+fi
 
 if [ "$TICKER" = "ui" ]; then
   URL="http://127.0.0.1:${FLIP_DESK_UI_PORT:-8787}"

@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from desk_agents.execution import PaperBroker, execute_decision  # noqa: E402
+from desk_agents.notify import autopilot_summary, post_discord, webhook_configured  # noqa: E402
 from desk_agents.marketdata import MarketBrief  # noqa: E402
 
 try:
@@ -76,6 +77,7 @@ def main() -> None:
     proc = run_script([PYTHON, "scripts/scan_watchlist.py", "--symbols", args.symbols,
                        "--out", str(scan_out)], timeout=300)
     if proc.returncode != 0 or not scan_out.exists():
+        post_discord(f"❌ **Autopilot pass failed at scan step**\n```{proc.stdout[-800:]}```")
         raise SystemExit(f"scan failed:\n{proc.stdout[-1500:]}")
     scan = json.loads(scan_out.read_text())
     finalists = [r["symbol"] for r in scan.get("finalists", [])]
@@ -145,6 +147,9 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, default=str))
     print(f"\nautopilot report saved: {out}")
+    if webhook_configured():
+        sent = post_discord(autopilot_summary(report))
+        print("discord webhook:", "sent" if sent else "FAILED")
     if not args.execute and report["trades"]:
         print("dry-run only — re-run with --execute to place these paper orders")
 
