@@ -26,7 +26,13 @@ def post_discord(message: str, *, username: str = "Flip Desk") -> bool:
         return False
     body = json.dumps({"content": message[:MAX_LEN], "username": username}).encode()
     request = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        url, data=body,
+        headers={
+            "Content-Type": "application/json",
+            # Discord's WAF rejects python-urllib's default agent (Cloudflare 1010).
+            "User-Agent": "FlipDesk/1.0 (+https://github.com/luphillip041-hub/Ai-digital)",
+        },
+        method="POST")
     try:
         with urllib.request.urlopen(request, timeout=15):
             return True
