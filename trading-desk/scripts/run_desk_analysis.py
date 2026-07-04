@@ -438,9 +438,13 @@ def main() -> None:
         payload = make_payload(args=args, analysts=analysts, cfg=cfg, estimate=estimate,
                                budget=budget, result=result, status="completed")
         save(payload)
+        # Offline runs are free — never debit the real monthly budget for them.
+        ledger_usage = result.get("usage")
+        if cfg["llm_provider"] == "offline":
+            ledger_usage = {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
         record_run(conn, ticker=args.ticker, trade_date=args.date, analysts=analysts, cfg=cfg,
                    profile=args.model_profile, estimate=estimate, status="completed",
-                   json_out=str(out), usage=result.get("usage"))
+                   json_out=str(out), usage=ledger_usage)
     except Exception as exc:
         # Bill the ledger for what the failed run actually spent, not the plan.
         spent = desk.meter.as_dict() if desk else {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}

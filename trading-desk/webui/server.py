@@ -141,6 +141,53 @@ def start_run(ticker: str, mode: str, profile: str | None) -> dict:
     return job
 
 
+def start_autopilot(execute: bool, max_research: int) -> dict:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    out = RUNS / f"autopilot_{stamp}.json"
+    label = ("AUTOPILOT — EXECUTING PAPER TRADES" if execute else "autopilot dry-run")
+    job = _job("autopilot", label)
+    cmd = [PYTHON, "scripts/autopilot.py", "--max-research", str(max_research), "--out", str(out)]
+    if execute:
+        cmd.append("--execute")
+    _run_subprocess(job, cmd, out, RUN_TIMEOUT, exclusive=True)
+    return job
+
+
+def start_backtest(symbols: str, lookback: str) -> dict:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    out = RUNS / f"backtest_{stamp}.json"
+    job = _job("backtest", f"backtest {lookback} {symbols[:40]}")
+    cmd = [PYTHON, "scripts/backtest_scanner.py", "--symbols", symbols,
+           "--lookback", lookback, "--out", str(out)]
+    _run_subprocess(job, cmd, out, 600, exclusive=False)
+    return job
+
+
+def account_payload() -> dict:
+    sys.path.insert(0, str(ROOT))
+    from desk_agents.execution import PaperBroker
+    try:
+        broker = PaperBroker()
+        account = broker.account()
+        return {
+            "ok": True,
+            "equity": account.get("equity"),
+            "cash": account.get("cash"),
+            "buying_power": account.get("buying_power"),
+            "positions": [
+                {"symbol": q["symbol"], "qty": q["qty"], "avg_entry": q["avg_entry_price"],
+                 "market_value": q["market_value"], "unrealized_pl": q["unrealized_pl"],
+                 "unrealized_plpc": q["unrealized_plpc"]}
+                for q in broker.positions()],
+            "open_orders": [
+                {"symbol": o["symbol"], "side": o["side"], "qty": o.get("qty"),
+                 "type": o.get("type"), "status": o.get("status")}
+                for o in broker.open_orders()],
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:300]}
+
+
 def state_payload() -> dict:
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     budget = {"month": month, "cap": CAP, "used": 0, "runs": 0, "recent": []}
@@ -190,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
         elif parsed.path == "/api/state":
             self._json(200, state_payload())
+        elif parsed.path == "/api/account":
+            self._json(200, account_payload())
         elif parsed.path.startswith("/api/jobs/"):
             job = jobs.get(parsed.path.rsplit("/", 1)[-1])
             self._json(200 if job else 404, job or {"error": "unknown job"})
@@ -217,6 +266,16 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/run":
                 ticker = (body.get("ticker") or "").strip().upper()
                 self._json(200, start_run(ticker, body.get("mode") or "desk", body.get("profile")))
+            elif self.path == "/api/autopilot":
+                self._json(200, start_autopilot(bool(body.get("execute")),
+                                                int(body.get("max_research") or 2)))
+            elif self.path == "/api/backtest":
+                symbols = _clean_symbols(body.get("symbols") or os.getenv(
+                    "FLIP_DESK_DEFAULT_SYMBOLS", "SPY,QQQ,NVDA,TSLA,SMH,AAPL,MSFT,AMZN,GOOGL,META"))
+                lookback = body.get("lookback") or "2y"
+                if lookback not in ("6mo", "1y", "2y"):
+                    raise ValueError("bad lookback")
+                self._json(200, start_backtest(symbols, lookback))
             else:
                 self._json(404, {"error": "not found"})
         except ValueError as exc:
@@ -335,6 +394,36 @@ td.num{font-family:var(--mono)}
 
 <div class="grid2">
   <div class="panel">
+    <h2>Autopilot · scan → research → paper trade</h2>
+    <div class="row">
+      <button class="ghost" onclick="runAutopilot(false)">Dry-run pass</button>
+      <button onclick="runAutopilot(true)">Run &amp; trade paper</button>
+    </div>
+    <div class="hint">Researches the top 2 finalists (16 calls max), places bracket orders on the
+    Alpaca <b>paper</b> account only — stop at 20dma, 2R target, ≤0.5% equity at risk per trade.</div>
+  </div>
+  <div class="panel">
+    <h2>Paper account</h2>
+    <div class="meter-label"><span id="acct-cash"></span><b id="acct-equity">—</b></div>
+    <div class="overflow" style="margin-top:10px">
+      <table><thead><tr><th>Position</th><th>Qty</th><th>Entry</th><th>Value</th><th>P&amp;L</th></tr></thead>
+      <tbody id="positions"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:14px">
+  <h2>Backtest the entry strategy · zero LLM</h2>
+  <div class="row">
+    <input type="text" id="bt-symbols" placeholder="default watchlist" autocomplete="off">
+    <button class="ghost" onclick="runBacktest()">Backtest 2y</button>
+  </div>
+  <div class="hint">Replays the exact scanner entry + bracket exit over history. The LLM layer is
+  forward-tested by the paper track record above, not simulated.</div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
     <h2>Monthly budget</h2>
     <div class="meter-label"><span id="budget-month"></span><b id="budget-used"></b></div>
     <div class="meter"><div id="budget-fill" style="width:0%"></div></div>
@@ -415,7 +504,9 @@ function runScan(){ launch('/api/scan', {symbols: $('symbols').value.trim()}, 'c
 async function openFile(name){
   const p = await (await fetch('/api/file?name=' + encodeURIComponent(name))).json();
   const el = $('result');
-  if (p.finalists || p.ranked){ el.innerHTML = renderScan(p, name); }
+  if (p.per_symbol && p.summary){ el.innerHTML = renderBacktest(p, name); }
+  else if (p.mode && p.trades !== undefined){ el.innerHTML = renderAutopilot(p, name); }
+  else if (p.finalists || p.ranked){ el.innerHTML = renderScan(p, name); }
   else { el.innerHTML = renderRun(p, name); }
   el.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
@@ -451,8 +542,68 @@ function renderRun(p, name){
     `</div>${reports}</div>`;
 }
 
+function money(x){ const n = parseFloat(x); return isNaN(n) ? '—' : '$' + n.toLocaleString(undefined, {maximumFractionDigits: 0}); }
+
+async function refreshAccount(){
+  const a = await (await fetch('/api/account')).json();
+  if (!a.ok){ $('acct-equity').textContent = 'unavailable'; $('acct-cash').textContent = a.error || ''; return; }
+  $('acct-equity').textContent = money(a.equity) + ' equity';
+  $('acct-cash').textContent = money(a.cash) + ' cash · ' + a.open_orders.length + ' open orders';
+  $('positions').innerHTML = a.positions.map(q => {
+    const pl = parseFloat(q.unrealized_pl), plpc = (parseFloat(q.unrealized_plpc) * 100).toFixed(2);
+    const cls = pl >= 0 ? 'long' : 'error';
+    return `<tr><td class="sym">${esc(q.symbol)}</td><td class="num">${esc(q.qty)}</td>` +
+      `<td class="num">${money(q.avg_entry)}</td><td class="num">${money(q.market_value)}</td>` +
+      `<td><span class="pill ${cls}">${pl >= 0 ? '+' : ''}${pl.toFixed(0)} · ${plpc}%</span></td></tr>`;
+  }).join('') || '<tr><td colspan="5" style="color:var(--faint)">no open positions</td></tr>';
+}
+
+function runAutopilot(execute){
+  if (execute && !confirm('Place real PAPER orders on the Alpaca paper account?')) return;
+  launch('/api/autopilot', {execute: execute, max_research: 2}, execute ? 'paper orders processed' : 'dry-run complete');
+}
+function runBacktest(){
+  launch('/api/backtest', {symbols: $('bt-symbols').value.trim(), lookback: '2y'}, 'backtest complete');
+}
+
+function renderAutopilot(p, name){
+  const trades = (p.trades || []).map(t => {
+    const pl = t.plan;
+    const line = pl.action === 'buy'
+      ? `${t.executed ? '✅ placed' : '📝 dry-run'} — buy ${pl.qty} ${esc(t.symbol)} ~$${pl.entry_ref} · stop ${pl.stop_price} · target ${pl.target_price} · risk $${pl.risk_dollars}`
+      : `${esc(t.symbol)}: ${esc(pl.reason)}`;
+    return `<div class="v" style="margin-top:6px">${line}</div>`;
+  }).join('') || '<div class="v" style="color:var(--faint)">no trades this pass</div>';
+  const steps = (p.steps || []).map(st => st.step === 'scan'
+    ? `scan → finalists: ${esc((st.finalists||[]).join(', ') || 'none')}`
+    : `${esc(st.symbol)} → ${esc(st.action || st.status)}`).join(' · ');
+  return `<div class="panel"><h2>Autopilot · ${esc(p.mode)} · ${esc(name)}</h2>` +
+    `<div class="kv"><div><div class="k">Pass</div><div class="v">${steps}</div></div>` +
+    `<div><div class="k">Account after</div><div class="v">${esc(p.account ? money(p.account.equity) + ' equity, ' + money(p.account.cash) + ' cash' : p.account_error || '—')}</div></div></div>` +
+    `<div class="k" style="margin-top:12px">Trades</div>${trades}</div>`;
+}
+
+function renderBacktest(p, name){
+  const s = p.summary || {};
+  const sim = s.portfolio_sim || {};
+  const rows = (p.per_symbol || []).map(r =>
+    `<tr><td class="sym">${esc(r.symbol)}</td><td class="num">${esc(r.trades)}</td>` +
+    `<td class="num">${esc(r.avg_r ?? '—')}</td><td>${esc(r.error || '')}</td></tr>`).join('');
+  return `<div class="panel"><h2>Backtest ${esc(p.lookback)} · ${esc(name)}</h2>` +
+    `<div class="kv">` +
+    `<div><div class="k">Trades</div><div class="v">${esc(s.trades)} · ${esc(s.win_rate_pct)}% wins</div></div>` +
+    `<div><div class="k">Avg R</div><div class="v">${esc(s.avg_r)}</div></div>` +
+    `<div><div class="k">Sim return (0.5% risk/trade)</div><div class="v">${esc(sim.return_pct)}% · max DD ${esc(sim.max_drawdown_pct)}%</div></div>` +
+    `<div><div class="k">Exits</div><div class="v">target ${esc(s.exits?.target)} · stop ${esc(s.exits?.stop)} · time ${esc(s.exits?.time)}</div></div>` +
+    `</div><div class="overflow" style="margin-top:12px"><table>` +
+    `<thead><tr><th>Symbol</th><th>Trades</th><th>Avg R</th><th></th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<div class="hint">${esc(p.strategy)}</div></div></div>`;
+}
+
 refresh();
+refreshAccount();
 setInterval(refresh, 20000);
+setInterval(refreshAccount, 30000);
 $('ticker').addEventListener('keydown', e => { if (e.key === 'Enter') runDesk('desk'); });
 $('symbols').addEventListener('keydown', e => { if (e.key === 'Enter') runScan(); });
 </script>

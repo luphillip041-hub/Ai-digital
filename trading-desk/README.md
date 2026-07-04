@@ -232,6 +232,32 @@ bash scripts/run_webui.sh
 - Desk runs queue one at a time, same as the Discord bot.
 - Binds localhost only. To reach it from another machine on your network, set `FLIP_DESK_UI_HOST=0.0.0.0` — there is no login, so trusted networks only (or use Tailscale).
 
+## Paper trading, autopilot, and backtesting
+
+The desk can now act on its research — **paper account only**, enforced in code
+(`desk_agents/execution.py` refuses any endpoint that isn't paper-api.alpaca.markets;
+there is no live-trading override).
+
+```bash
+python scripts/autopilot.py                  # dry-run: scan → research top 2 → print order plans
+python scripts/autopilot.py --execute        # same, but places paper bracket orders
+python scripts/backtest_scanner.py --lookback 2y   # replay the entry strategy, zero LLM
+```
+
+How execution works:
+- The LLM decides **whether** (BUY/SELL/HOLD). Deterministic math decides **how much
+  and where**: stop at the entry-day 20dma (or 1.5 ATR), target +2R, size capped at
+  min(5% of equity notional, 0.5% of equity at risk). Every order is a bracket.
+- The desk never pyramids an existing position; SELL decisions close it.
+- Cron it for a daily pass, e.g. weekdays at 10:05 ET:
+  `5 10 * * 1-5 cd ~/flip-trading-desk/trading-desk && .venv/bin/python scripts/autopilot.py --execute`
+
+Backtesting, honestly: the deterministic entry funnel (scanner score → bracket exit)
+is replayed bar-for-bar over history with the exact live scoring code. The LLM layer
+is **forward-tested** by the paper track record — historical LLM decisions can't be
+simulated without lookahead bias. The dashboard shows both: backtest results and the
+live paper account P&L.
+
 ## The sub-agent team
 
 | Agent | Model tier | Job |
