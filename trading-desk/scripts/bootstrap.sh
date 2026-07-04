@@ -67,6 +67,16 @@ env.write_text(text)
 print("  keys set:", ", ".join(v for v in ("DEEPSEEK_API_KEY","ALPACA_API_KEY","ALPACA_SECRET_KEY","DISCORD_BOT_TOKEN") if os.environ.get(v)) or "none (edit .env manually)")
 PYEOF
 
+if [ "$TICKER" = "ui" ]; then
+  URL="http://127.0.0.1:${FLIP_DESK_UI_PORT:-8787}"
+  say "④ Launching the desk dashboard → $URL"
+  echo "  (Ctrl+C stops it; re-run this same command anytime to update + relaunch)"
+  if command -v open >/dev/null 2>&1; then (sleep 2 && open "$URL") &   # macOS
+  elif command -v xdg-open >/dev/null 2>&1; then (sleep 2 && xdg-open "$URL") &  # Linux
+  fi
+  exec python webui/server.py
+fi
+
 say "④ Zero-LLM watchlist scan (free)"
 python scripts/scan_watchlist.py --max-finalists 3 | tail -5 || true
 
@@ -77,3 +87,4 @@ say "Done. Next runs:"
 echo "  cd $DIR/trading-desk && source .venv/bin/activate"
 echo "  python scripts/scan_watchlist.py            # free"
 echo "  python scripts/run_desk_analysis.py TSLA    # 8 calls"
+echo "  bash scripts/run_webui.sh                   # web dashboard"
