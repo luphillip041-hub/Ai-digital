@@ -22,6 +22,14 @@ sys.path.insert(0, str(ROOT))
 
 from desk_agents.marketdata import fetch_ohlcv  # noqa: E402
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / ".env.local")
+except Exception:  # pragma: no cover - optional during static checks
+    pass
+
 
 @dataclass(frozen=True)
 class ScanResult:
