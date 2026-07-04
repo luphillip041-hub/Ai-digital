@@ -18,7 +18,7 @@ import os
 import shlex
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import timezone, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +86,7 @@ async def run_cmd(args: list[str], timeout: int) -> CmdResult:
 
 
 def _now_stamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def _safe_symbol(raw: str) -> str:
@@ -190,7 +190,7 @@ def format_budget() -> str:
         return "💸 Budget ledger is empty — no runs recorded yet."
     import sqlite3
 
-    month = datetime.now(UTC).strftime("%Y-%m")
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
     with sqlite3.connect(db) as conn:
         row = conn.execute(
             "SELECT COALESCE(SUM(estimated_llm_calls), 0), COUNT(*) FROM runs WHERE month = ? AND status != 'blocked'",

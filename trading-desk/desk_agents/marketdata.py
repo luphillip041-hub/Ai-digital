@@ -21,7 +21,7 @@ import os
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
 
 ALPACA_DATA_URL = os.getenv("ALPACA_DATA_URL", "https://data.alpaca.markets")
 LOOKBACK_DAYS = {"1mo": 31, "3mo": 92, "6mo": 184, "1y": 366, "2y": 731}
@@ -109,7 +109,7 @@ def _alpaca_get(path: str, params: dict[str, str]) -> dict:
 
 def _fetch_alpaca_ohlcv(symbol: str, lookback: str) -> OHLCV:
     days = LOOKBACK_DAYS.get(lookback, 184)
-    start = (datetime.now(UTC) - timedelta(days=days)).date().isoformat()
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     bars: list[dict] = []
     params = {
         "timeframe": "1Day",
@@ -181,7 +181,7 @@ def _rsi(values: list[float], period: int = 14) -> float | None:
     if len(values) <= period:
         return None
     gains, losses = [], []
-    for prev, curr in zip(values[-period - 1 : -1], values[-period:], strict=False):
+    for prev, curr in zip(values[-period - 1 : -1], values[-period:]):
         diff = curr - prev
         gains.append(max(diff, 0.0))
         losses.append(max(-diff, 0.0))

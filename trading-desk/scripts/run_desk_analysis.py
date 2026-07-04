@@ -15,7 +15,7 @@ import os
 import sqlite3
 import sys
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import timezone, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -102,11 +102,11 @@ def _split_analysts(raw: str) -> tuple[str, ...]:
 
 
 def _utc_now() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _month_key() -> str:
-    return datetime.now(UTC).strftime("%Y-%m")
+    return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
 def ledger_path() -> Path:

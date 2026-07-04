@@ -14,7 +14,7 @@ import json
 import math
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,7 +61,7 @@ def _rsi(values: list[float], period: int = 14) -> float | None:
         return None
     gains: list[float] = []
     losses: list[float] = []
-    for prev, curr in zip(values[-period - 1 : -1], values[-period:], strict=False):
+    for prev, curr in zip(values[-period - 1 : -1], values[-period:]):
         diff = curr - prev
         gains.append(max(diff, 0.0))
         losses.append(max(-diff, 0.0))
@@ -203,7 +203,7 @@ def main() -> None:
     results.sort(key=lambda r: r.score, reverse=True)
     finalists = [r for r in results if r.eligible][: args.max_finalists]
     payload = {
-        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "lookback": args.lookback,
         "min_score": args.min_score,
         "data_sources": sorted({r.source for r in results}),
