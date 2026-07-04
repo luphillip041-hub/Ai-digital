@@ -217,6 +217,21 @@ python scripts/openalice_bridge.py --symbols SPY,QQQ,NVDA,TSLA --max-finalists 3
 
 See `trading-desk/openalice/README.md` for install/start/headless details.
 
+## Web dashboard
+
+A local point-and-click UI over the same scripts:
+
+```bash
+bash scripts/run_webui.sh
+# then open http://127.0.0.1:8787
+```
+
+- Type a ticker → **Run desk** (8 calls) or **Preflight** (free); Shift-click Run for the full 4-analyst stack.
+- One-click watchlist scan (zero LLM calls).
+- Live budget meter, run ledger, and every saved artifact browsable with the full agent debate.
+- Desk runs queue one at a time, same as the Discord bot.
+- Binds localhost only. To reach it from another machine on your network, set `FLIP_DESK_UI_HOST=0.0.0.0` — there is no login, so trusted networks only (or use Tailscale).
+
 ## The sub-agent team
 
 | Agent | Model tier | Job |
