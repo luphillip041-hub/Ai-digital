@@ -95,6 +95,7 @@ Commands available to everyone in allowed Discord channels:
 ```text
 !scan SPY,QQQ,NVDA,TSLA  # zero-LLM stock scanner
 !optionscan SPY,QQQ,NVDA  # options signal scanner with contract/liquidity/risk card
+!vibe TSLA              # Vibe-Trading style research bridge / analyst packet
 !preflight AAPL          # budget/model check, no LLM spend
 !desk AAPL               # low-burn desk analysis
 !deskfull NVDA           # expensive full analyst stack
@@ -145,6 +146,7 @@ The Streamlit UI gives the desk a dark, glassy command-center front end:
 - Home launchpad
 - zero-LLM stock scanner
 - options signal cards
+- Vibe-Trading inspired Research Lab
 - active strategy workspace
 - payoff sketch for selected contract
 - run artifacts / budget ledger
@@ -218,6 +220,16 @@ OpenAlice cockpit prompt:
 ```bash
 python scripts/openalice_bridge.py --symbols SPY,QQQ,NVDA,TSLA --max-finalists 3
 ```
+
+Vibe-Trading style research packet:
+
+```bash
+python scripts/vibe_research_bridge.py TSLA --refresh
+# Optional, only if vibe-trading-ai is installed:
+python scripts/vibe_research_bridge.py TSLA --refresh --run-vibe
+```
+
+This keeps Vibe as an analyst sidecar while the Flip desk remains source of truth for scanner/risk/run cards. See `docs/vibe_trading_integration.md`.
 
 Options signal scanner:
 
@@ -299,6 +311,7 @@ Key upstream facts used here:
 - OpenAlice cockpit bridge without vendoring AGPL code.
 - Discord command bot for shared server access.
 - Streamlit command-center UI for scanner/options/workspace/runs/diagnostics.
+- Vibe-Trading inspired research bridge and Research Lab view, sidecar-only.
 - Docker Compose and systemd deployment for 24/7 operation.
 - Preflight mode to estimate LLM/tool usage before spending tokens.
 - SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.

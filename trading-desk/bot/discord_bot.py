@@ -218,6 +218,38 @@ def format_runs() -> str:
     return "\n".join(lines)
 
 
+
+def format_vibe(payload: dict[str, Any]) -> str:
+    symbol = payload.get("symbol")
+    verdict = payload.get("verdict") or {}
+    desk = payload.get("desk_context") or {}
+    opt = payload.get("option_signal") or {}
+    sidecar = payload.get("vibe_sidecar") or {}
+    lines = [
+        f"🧬 **{symbol} Vibe bridge** — research/paper only",
+        f"Stance: **{verdict.get('stance', 'n/a')}** | Bias `{verdict.get('bias', 'n/a')}` | Conf `{verdict.get('confidence', 'n/a')}/10`",
+        f"{verdict.get('summary', '')}",
+        f"Desk scanner: score `{desk.get('score')}` close `{desk.get('close')}` RSI `{desk.get('rsi14')}` ATR% `{desk.get('atr_pct')}`",
+    ]
+    why = ", ".join((desk.get("why") or [])[:4])
+    if why:
+        lines.append(f"Why: {why}")
+    if opt:
+        contract = opt.get("contract") or {}
+        lines.append(
+            f"Option lean: `{opt.get('setup')}` `{opt.get('direction')}` | "
+            f"{contract.get('type')} {contract.get('strike')} exp `{contract.get('expiration')}` "
+            f"bid/ask `{contract.get('bid')}/{contract.get('ask')}`"
+        )
+    lines.append(f"Vibe sidecar: `{sidecar.get('status')}`")
+    if payload.get("json_path"):
+        try:
+            rel = Path(payload["json_path"]).relative_to(DESK_ROOT)
+        except Exception:
+            rel = payload["json_path"]
+        lines.append(f"saved `{rel}`")
+    return "\n".join(lines)
+
 def chunk_message(text: str) -> list[str]:
     if len(text) <= MAX_DISCORD_CHARS:
         return [text]
@@ -255,6 +287,7 @@ def command_allowed(message: discord.Message) -> bool:
 HELP = f"""🤖 **Flip Desk Commands**
 `{PREFIX}scan [symbols]` — zero-LLM stock scanner, e.g. `{PREFIX}scan SPY,QQQ,NVDA,TSLA`
 `{PREFIX}optionscan [symbols]` — options signal scanner with contract/liquidity/risk card
+`{PREFIX}vibe TICKER` — Vibe-Trading style research bridge / analyst packet
 `{PREFIX}preflight TICKER` — budget/model check, no LLM spend
 `{PREFIX}desk TICKER` — low-burn analysis after preflight
 `{PREFIX}deskfull TICKER` — expensive full analyst stack
@@ -359,6 +392,33 @@ async def on_message(message: discord.Message) -> None:
             text = top.get("signal_text") or json.dumps(top, indent=2, default=str)[:1200]
             text += f"\n\nFull scan saved `{out.relative_to(DESK_ROOT)}`"
             await thinking.edit(content=text[:MAX_DISCORD_CHARS])
+            return
+
+        if cmd == "vibe":
+            if not args:
+                await reply_chunks(message, f"Usage: `{PREFIX}vibe TSLA`")
+                return
+            ticker = _safe_symbol(args[0])
+            out = RUNS_DIR / f"discord_vibe_{ticker}_{_now_stamp()}.json"
+            md_out = RUNS_DIR / f"discord_vibe_{ticker}_{_now_stamp()}.md"
+            thinking = await message.reply(f"🧬 building **{ticker}** Vibe-style research packet…", mention_author=False)
+            result = await run_cmd(
+                [
+                    PYTHON,
+                    "scripts/vibe_research_bridge.py",
+                    ticker,
+                    "--refresh",
+                    "--json-out",
+                    str(out),
+                    "--markdown-out",
+                    str(md_out),
+                ],
+                timeout=SCAN_TIMEOUT_SECONDS * 2,
+            )
+            if result.exit_code != 0:
+                await thinking.edit(content=f"❌ vibe bridge failed\n```{(result.stderr or result.stdout)[-1500:]}```")
+                return
+            await thinking.edit(content=format_vibe(_read_json(out))[:MAX_DISCORD_CHARS])
             return
 
         if cmd in {"preflight", "desk", "deskfull"}:

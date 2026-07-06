@@ -231,10 +231,11 @@ def render_launchpad(stock_payload: dict[str, Any], options_payload: dict[str, A
 <div class="hero">
   <div class="subtle">{et_now()} · research/paper desk · no live execution</div>
   <h1>Flip Trading Desk</h1>
-  <p class="subtle">Command center for scanners, options signals, budget guardrails, OpenAlice bridge, and Discord run artifacts.</p>
+  <p class="subtle">Command center for scanners, options signals, Vibe-style research, budget guardrails, OpenAlice bridge, and Discord run artifacts.</p>
   <span class="pill">Zero-LLM scanner first</span>
   <span class="pill">Options signals</span>
   <span class="pill">Budget guard</span>
+  <span class="pill">Vibe research bridge</span>
   <span class="pill">OpenAlice cockpit-ready</span>
 </div>
 """,
@@ -243,10 +244,11 @@ def render_launchpad(stock_payload: dict[str, Any], options_payload: dict[str, A
     st.write("")
     render_top_metrics(stock_payload, options_payload)
     st.write("")
-    cards = st.columns(4)
+    cards = st.columns(5)
     copy = [
         ("📡 Live Scanner", "Run broad symbol triage before spending model calls."),
         ("🎯 Options Signals", "Contract-quality cards with target/stop/management."),
+        ("🧬 Research Lab", "Vibe-Trading style analyst packets without replacing desk rules."),
         ("🧠 Strategy Workspace", "Inspect active signal, payoff curve, levels, and risk."),
         ("🛠 Diagnostics", "Artifacts, ledgers, environment status, and docs."),
     ]
@@ -341,6 +343,79 @@ def render_options(symbols: str) -> dict[str, Any]:
     return payload
 
 
+
+def render_research_lab(symbols: str) -> None:
+    st.subheader("🧬 Research Lab — Vibe bridge")
+    st.caption("Uses Vibe-Trading ideas as an analyst sidecar: scanner context + optional external vibe-trading CLI. No execution.")
+    default_symbol = (st.session_state.get("active_ticker") or symbols.split(",")[0] or "SPY").strip().upper()
+    c1, c2, c3 = st.columns([1.2, 1, 1])
+    symbol = c1.text_input("Ticker", value=default_symbol, key="vibe_symbol").strip().upper()
+    run_external = c2.toggle("Call external Vibe CLI if installed", value=False)
+    refresh = c3.toggle("Refresh scanner context", value=True)
+    out = RUNS / f"ui_vibe_{symbol}.json"
+    md = RUNS / f"ui_vibe_{symbol}.md"
+    if st.button("Build research packet", use_container_width=True):
+        args = [
+            str(SCRIPTS / "vibe_research_bridge.py"),
+            symbol,
+            "--json-out",
+            str(out),
+            "--markdown-out",
+            str(md),
+        ]
+        if refresh:
+            args.append("--refresh")
+        if run_external:
+            args.append("--run-vibe")
+        ok, output = run_script(args, timeout=960 if run_external else 300)
+        if ok:
+            st.success("Research packet built")
+        else:
+            st.error(output)
+    payload = read_json(out)
+    if not payload:
+        recent = sorted(RUNS.glob("ui_vibe_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if recent:
+            payload = read_json(recent[0])
+            st.caption(f"Showing latest packet: {recent[0].name}")
+    if not payload:
+        st.info("Build a packet to populate the research lab.")
+        st.markdown("""
+**Why this exists:** Vibe-Trading is best as an analyst lab, not the desk's source of truth. This bridge normalizes its ideas into our desk format so scanner/risk/run-card discipline stays intact.
+""")
+        return
+    verdict = payload.get("verdict") or {}
+    desk = payload.get("desk_context") or {}
+    opt = payload.get("option_signal") or {}
+    sidecar = payload.get("vibe_sidecar") or {}
+    st.markdown(
+        f"""
+<div class="signal-card">
+  <div class="subtle">{payload.get('generated_at')} · research/paper only</div>
+  <h3>🧬 {payload.get('symbol')} — {verdict.get('stance', 'research packet')}</h3>
+  <div class="pill">Bias {verdict.get('bias', 'n/a')}</div>
+  <div class="pill">Confidence {verdict.get('confidence', 'n/a')}/10</div>
+  <div class="pill">Sidecar {sidecar.get('status', 'skipped')}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.write(verdict.get("summary", ""))
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Desk score", desk.get("score", "—"))
+    c2.metric("Close", desk.get("close", "—"))
+    c3.metric("RSI14", desk.get("rsi14", "—"))
+    c4.metric("ATR%", desk.get("atr_pct", "—"))
+    st.caption("Scanner why: " + short_list(desk.get("why") or [], 8))
+    if opt:
+        st.markdown("### Matched option signal")
+        st.json(opt)
+    with st.expander("Full research JSON", expanded=False):
+        st.json(payload)
+    if md.exists():
+        with st.expander("Markdown report", expanded=False):
+            st.code(md.read_text(encoding="utf-8")[:6000], language="markdown")
+
 def render_workspace(options_payload: dict[str, Any]) -> None:
     st.subheader("🧠 Strategy Workspace")
     signals = options_payload.get("signals") or []
@@ -407,6 +482,7 @@ def render_diagnostics(symbols: str) -> None:
         "DEEPSEEK_API_KEY",
         "OPENROUTER_API_KEY",
         "TRADIER_ACCESS_TOKEN",
+        "VIBE_TRADING_BIN",
         "ALPACA_API_KEY_ID",
         "ALPACA_API_SECRET_KEY",
     ]
@@ -423,7 +499,7 @@ def render_diagnostics(symbols: str) -> None:
     st.markdown("### Commands")
     st.code(
         "python ui/dashboard.py  # not recommended\n"
-        "streamlit run ui/dashboard.py --server.port 8502 --server.address 0.0.0.0\n"
+        "streamlit run ui/dashboard.py --server.port 8512 --server.address 0.0.0.0\n"
         "docker compose up -d --build",
         language="bash",
     )
@@ -438,12 +514,12 @@ def main() -> None:
         st.session_state.symbols = symbols
         view = st.radio(
             "View",
-            ["Home", "Live Scanner", "Options Signals", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
+            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
             index=0,
         )
         st.divider()
         st.caption("Discord commands")
-        st.code("!scan\n!optionscan\n!preflight AAPL\n!desk AAPL", language="text")
+        st.code("!scan\n!optionscan\n!vibe TSLA\n!preflight AAPL\n!desk AAPL", language="text")
     stock_payload = read_json(RUNS / "ui_watchlist_scan.json")
     options_payload = read_json(RUNS / "ui_options_signals.json") or read_json(RUNS / "options_signals_latest.json")
     if view == "Home":
@@ -452,6 +528,8 @@ def main() -> None:
         render_scanner(symbols)
     elif view == "Options Signals":
         render_options(symbols)
+    elif view == "Research Lab":
+        render_research_lab(symbols)
     elif view == "Strategy Workspace":
         render_workspace(options_payload)
     elif view == "Runs/Budget":
