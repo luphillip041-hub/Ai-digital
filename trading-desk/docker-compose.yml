@@ -12,10 +12,12 @@ services:
       TRADINGAGENTS_RESULTS_DIR: /app/trading-desk/runs
       TRADINGAGENTS_MEMORY_LOG_PATH: /app/trading-desk/memory/trading_memory.md
       FLIP_DESK_PYTHON: python
+      FLIP_DESK_PAPER_OPTIONS_ROOT: /app/alpaca-paper-options
     volumes:
       - ./runs:/app/trading-desk/runs
       - ./.cache:/app/trading-desk/.cache
       - ./memory:/app/trading-desk/memory
+      - ../alpaca-paper-options:/app/alpaca-paper-options
     healthcheck:
       test: ["CMD-SHELL", "python - <<'PY'\nfrom pathlib import Path\nfor p in ['runs', '.cache', 'memory']:\n    Path(p).mkdir(exist_ok=True)\nprint('ok')\nPY"]
       interval: 60s
@@ -38,10 +40,12 @@ services:
       TRADINGAGENTS_RESULTS_DIR: /app/trading-desk/runs
       TRADINGAGENTS_MEMORY_LOG_PATH: /app/trading-desk/memory/trading_memory.md
       FLIP_DESK_PYTHON: python
+      FLIP_DESK_PAPER_OPTIONS_ROOT: /app/alpaca-paper-options
     volumes:
       - ./runs:/app/trading-desk/runs
       - ./.cache:/app/trading-desk/.cache
       - ./memory:/app/trading-desk/memory
+      - ../alpaca-paper-options:/app/alpaca-paper-options
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8512/_stcore/health >/dev/null"]
       interval: 60s

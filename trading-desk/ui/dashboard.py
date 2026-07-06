@@ -22,8 +22,11 @@ import pandas as pd
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = ROOT.parent
 RUNS = ROOT / "runs"
 SCRIPTS = ROOT / "scripts"
+PAPER_ROOT = Path(os.getenv("FLIP_DESK_PAPER_OPTIONS_ROOT", str(PROJECT_ROOT / "alpaca-paper-options"))).resolve()
+PAPER_RUNS = PAPER_ROOT / "runs"
 PYTHON = os.getenv("FLIP_DESK_PYTHON", sys.executable)
 ET = ZoneInfo("America/New_York")
 DEFAULT_SYMBOLS = os.getenv(
@@ -85,12 +88,12 @@ def read_json(path: Path) -> dict[str, Any]:
         return {"error": str(exc), "path": str(path)}
 
 
-def run_script(args: list[str], timeout: int = 240) -> tuple[bool, str]:
+def run_script(args: list[str], timeout: int = 240, cwd: Path = ROOT) -> tuple[bool, str]:
     RUNS.mkdir(exist_ok=True)
     try:
         proc = subprocess.run(
             [PYTHON, *args],
-            cwd=ROOT,
+            cwd=cwd,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -244,11 +247,12 @@ def render_launchpad(stock_payload: dict[str, Any], options_payload: dict[str, A
     st.write("")
     render_top_metrics(stock_payload, options_payload)
     st.write("")
-    cards = st.columns(5)
+    cards = st.columns(6)
     copy = [
         ("📡 Live Scanner", "Run broad symbol triage before spending model calls."),
         ("🎯 Options Signals", "Contract-quality cards with target/stop/management."),
         ("🧬 Research Lab", "Vibe-Trading style analyst packets without replacing desk rules."),
+        ("🧾 Paper Options", "Launch/review the standalone Alpaca paper-options service."),
         ("🧠 Strategy Workspace", "Inspect active signal, payoff curve, levels, and risk."),
         ("🛠 Diagnostics", "Artifacts, ledgers, environment status, and docs."),
     ]
@@ -454,6 +458,77 @@ def render_workspace(options_payload: dict[str, Any]) -> None:
 
 
 
+
+def render_paper_options(symbols: str) -> None:
+    st.subheader("🧾 Alpaca PAPER Options")
+    st.caption("Desk control panel for the separate `alpaca-paper-options/` service. Code + env stay isolated; the desk only launches/reviews it.")
+    st.code(str(PAPER_ROOT), language="text")
+    exists = PAPER_ROOT.exists()
+    c0, c1, c2, c3 = st.columns([1, 1, 1, 1])
+    c0.metric("Service", "found" if exists else "missing")
+    c1.metric("Submit mode", "ON" if os.getenv("ALPACA_PAPER_OPTIONS_AUTO_SUBMIT", "false").lower() == "true" else "dry-run")
+    max_debit = c2.number_input("Max debit ($)", min_value=25.0, max_value=5000.0, value=float(os.getenv("ALPACA_PAPER_MAX_ORDER_DEBIT", "250")), step=25.0)
+    c3.metric("Runs", len(list(PAPER_RUNS.glob("*.json"))) if PAPER_RUNS.exists() else 0)
+
+    if not exists:
+        st.error("Standalone paper-options service not found. Expected `../alpaca-paper-options/`.")
+        return
+
+    a, b, c = st.columns(3)
+    if a.button("Run paper-options pass", use_container_width=True):
+        ok, output = run_script(
+            ["scripts/paper_options_daily.py", "run-iteration", "--symbols", symbols, "--max-debit", str(max_debit)],
+            timeout=720,
+            cwd=PAPER_ROOT,
+        )
+        st.success("Paper-options pass complete") if ok else st.error(output)
+    if b.button("Build EOD report", use_container_width=True):
+        ok, output = run_script(["scripts/paper_options_daily.py", "eod-report"], timeout=240, cwd=PAPER_ROOT)
+        st.success("EOD report complete") if ok else st.error(output)
+    if c.button("Check Alpaca account", use_container_width=True):
+        ok, output = run_script(["scripts/alpaca_paper_options.py", "account"], timeout=90, cwd=PAPER_ROOT)
+        if ok:
+            try:
+                st.json(json.loads(output))
+            except Exception:
+                st.code(output)
+        else:
+            st.error(output)
+
+    latest = read_json(PAPER_RUNS / "paper_options_latest.json")
+    eod = read_json(PAPER_RUNS / "paper_options_eod_latest.json")
+    if latest:
+        st.markdown("### Latest paper-options run")
+        order = latest.get("paper_order") or {}
+        sig = latest.get("selected_signal") or {}
+        setup = sig.get("setup") or {}
+        contract = sig.get("contract") or {}
+        cols = st.columns(4)
+        cols[0].metric("Mode", latest.get("mode", "—"))
+        cols[1].metric("Selected", sig.get("symbol", "—"))
+        cols[2].metric("Score", sig.get("total_score", "—"))
+        cols[3].metric("Order", order.get("status", "—"))
+        st.caption(f"Setup: {setup.get('setup')} {setup.get('direction')} | Contract: {contract.get('type')} {contract.get('strike')} exp {contract.get('expiration')}")
+        if order.get("reasons"):
+            st.warning("Blocked: " + "; ".join(order.get("reasons") or []))
+        with st.expander("Latest run JSON", expanded=False):
+            st.json(latest)
+    else:
+        st.info("No standalone paper-options run yet.")
+
+    if eod:
+        st.markdown("### Latest EOD report")
+        acct = ((eod.get("alpaca") or {}).get("account") or {}).get("account") or {}
+        cols = st.columns(4)
+        cols[0].metric("Account", acct.get("status", "—"))
+        cols[1].metric("Options level", acct.get("options_trading_level", "—"))
+        cols[2].metric("Open positions", len(((eod.get("alpaca") or {}).get("positions") or {}).get("positions") or []))
+        cols[3].metric("Open orders", len(((eod.get("alpaca") or {}).get("orders") or {}).get("orders") or []))
+        md = PAPER_RUNS / "paper_options_eod_latest.md"
+        if md.exists():
+            with st.expander("EOD Markdown", expanded=False):
+                st.code(md.read_text(encoding="utf-8")[:6000], language="markdown")
+
 def render_runs() -> None:
     st.subheader("📁 Runs, Budget & Artifacts")
     stats = ledger_stats()
@@ -484,13 +559,12 @@ def render_diagnostics(symbols: str) -> None:
         "OPENROUTER_API_KEY",
         "TRADIER_ACCESS_TOKEN",
         "VIBE_TRADING_BIN",
-        "ALPACA_API_KEY_ID",
-        "ALPACA_API_SECRET_KEY",
+        "FLIP_DESK_PAPER_OPTIONS_ROOT",
     ]
     env_rows = [{"name": name, "present": bool(os.getenv(name))} for name in env_names]
     st.dataframe(pd.DataFrame(env_rows), hide_index=True, use_container_width=True)
     c1, c2 = st.columns(2)
-    c1.code(f"Root: {ROOT}\nRuns: {RUNS}\nPython: {PYTHON}\nSymbols: {symbols}")
+    c1.code(f"Root: {ROOT}\nRuns: {RUNS}\nPaper: {PAPER_ROOT}\nPython: {PYTHON}\nSymbols: {symbols}")
     with c2:
         st.markdown("**Safety posture**")
         st.write("✅ No broker execution in UI")
@@ -515,12 +589,12 @@ def main() -> None:
         st.session_state.symbols = symbols
         view = st.radio(
             "View",
-            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
+            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Paper Options", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
             index=0,
         )
         st.divider()
         st.caption("Discord commands")
-        st.code("!scan\n!optionscan\n!vibe TSLA\n!preflight AAPL\n!desk AAPL", language="text")
+        st.code("!scan\n!optionscan\n!vibe TSLA\n!paperopts\n!eod\n!preflight AAPL\n!desk AAPL", language="text")
     stock_payload = read_json(RUNS / "ui_watchlist_scan.json")
     options_payload = read_json(RUNS / "ui_options_signals.json") or read_json(RUNS / "options_signals_latest.json")
     if view == "Home":
@@ -531,6 +605,8 @@ def main() -> None:
         render_options(symbols)
     elif view == "Research Lab":
         render_research_lab(symbols)
+    elif view == "Paper Options":
+        render_paper_options(symbols)
     elif view == "Strategy Workspace":
         render_workspace(options_payload)
     elif view == "Runs/Budget":

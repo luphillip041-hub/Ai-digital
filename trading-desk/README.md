@@ -96,6 +96,8 @@ Commands available to everyone in allowed Discord channels:
 !scan SPY,QQQ,NVDA,TSLA  # zero-LLM stock scanner
 !optionscan SPY,QQQ,NVDA  # options signal scanner with contract/liquidity/risk card
 !vibe TSLA              # Vibe-Trading style research bridge / analyst packet
+!paperopts SPY,QQQ      # run standalone Alpaca PAPER options dry-run
+!eod                    # standalone Alpaca PAPER options EOD report
 !preflight AAPL          # budget/model check, no LLM spend
 !desk AAPL               # low-burn desk analysis
 !deskfull NVDA           # expensive full analyst stack
@@ -147,6 +149,7 @@ The Streamlit UI gives the desk a dark, glassy command-center front end:
 - zero-LLM stock scanner
 - options signal cards
 - Vibe-Trading inspired Research Lab
+- Paper Options control panel for the standalone Alpaca PAPER service
 - active strategy workspace
 - payoff sketch for selected contract
 - run artifacts / budget ledger
@@ -230,6 +233,15 @@ python scripts/vibe_research_bridge.py TSLA --refresh --run-vibe
 ```
 
 This keeps Vibe as an analyst sidecar while the Flip desk remains source of truth for scanner/risk/run cards. See `docs/vibe_trading_integration.md`.
+
+Standalone Alpaca PAPER options service from desk wrappers:
+
+```bash
+# Code/env remain in ../alpaca-paper-options; desk UI/Discord only launches/reviews it.
+cd /root/flip/projects/trading-desk/Ai-digital/alpaca-paper-options
+python scripts/paper_options_daily.py run-iteration --symbols SPY,QQQ,NVDA,TSLA
+python scripts/paper_options_daily.py eod-report
+```
 
 Options signal scanner:
 
