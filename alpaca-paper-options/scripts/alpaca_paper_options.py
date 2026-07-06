@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Isolated Alpaca PAPER options adapter for Flip's trading desk.
+"""Isolated Alpaca PAPER options adapter for Flip's standalone paper-options service.
 
 Paper-only by default. This module never reads credentials from other projects;
-it loads only trading-desk/.env and .env.local.
+it loads only alpaca-paper-options/.env and .env.local.
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def request_json(
     timeout: int = 20,
 ) -> Any:
     if not cfg.present:
-        raise AlpacaError("missing Alpaca paper API keys in trading-desk/.env")
+        raise AlpacaError("missing Alpaca paper API keys in alpaca-paper-options/.env")
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=body, headers=headers(cfg), method=method)
     try:
@@ -261,7 +261,7 @@ def stage_signal_order(
         "submitted_order": None,
     }
     if not cfg.present:
-        result.update({"status": "blocked", "reasons": ["missing Alpaca paper API keys in trading-desk/.env"]})
+        result.update({"status": "blocked", "reasons": ["missing Alpaca paper API keys in alpaca-paper-options/.env"]})
         return result
     account = get_account(cfg)
     clock = get_clock(cfg)

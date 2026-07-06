@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Daily paper-options trader for Flip's trade desk.
+"""Standalone daily paper-options trader for Flip.
 
 Runs a full low-burn market pass, stages/optionally submits the top PAPER option
 signal through Alpaca guardrails, and writes an EOD report artifact.
@@ -25,9 +25,9 @@ except Exception:  # pragma: no cover
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 SCRIPTS = ROOT / "scripts"
-PYTHON = os.getenv("FLIP_DESK_PYTHON", sys.executable)
+PYTHON = os.getenv("ALPACA_PAPER_PYTHON", sys.executable)
 ET = ZoneInfo("America/New_York")
-DEFAULT_SYMBOLS = os.getenv("FLIP_DESK_DEFAULT_SYMBOLS", "SPY,QQQ,NVDA,TSLA,SMH,AAPL,MSFT,AMZN,GOOGL,META")
+DEFAULT_SYMBOLS = os.getenv("ALPACA_PAPER_DEFAULT_SYMBOLS", "SPY,QQQ,NVDA,TSLA,SMH,AAPL,MSFT,AMZN,GOOGL,META")
 
 
 def load_env() -> None:
@@ -197,7 +197,7 @@ def build_iteration(symbols: str, *, submit: bool, max_debit: float, max_signals
             "live_execution": False,
             "submit_requires_flag": True,
             "max_debit": max_debit,
-            "note": "Default dry-run. To submit paper orders, set explicit --submit or FLIP_DESK_PAPER_OPTIONS_AUTO_SUBMIT=true.",
+            "note": "Default dry-run. To submit paper orders, set explicit --submit or ALPACA_PAPER_OPTIONS_AUTO_SUBMIT=true.",
         },
     }
     write_json(report_json, report)
@@ -247,7 +247,7 @@ def format_report(report: dict[str, Any]) -> str:
     selected = report.get("selected_signal")
     order = report.get("paper_order") or {}
     lines = [
-        f"# Paper Options Desk Report — {report.get('trade_date_et')}",
+        f"# Paper Options Service Report — {report.get('trade_date_et')}",
         "",
         f"Generated: {report.get('generated_at')} UTC",
         f"Mode: **{report.get('mode')}** — paper only",
@@ -295,7 +295,7 @@ def format_eod(payload: dict[str, Any]) -> str:
         f"- Options buying power: {acct.get('options_buying_power', 'n/a')}",
         f"- Options level: {acct.get('options_trading_level', 'n/a')}",
         "",
-        "## Latest desk action",
+        "## Latest service action",
         f"- Run: {latest.get('run_id', 'n/a')}",
         f"- Mode: {latest.get('mode', 'n/a')}",
         f"- Selected: {format_signal_line(latest.get('selected_signal'))}",
@@ -330,13 +330,13 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     runp = sub.add_parser("run-iteration")
     runp.add_argument("--symbols", default=DEFAULT_SYMBOLS)
-    runp.add_argument("--max-signals", type=int, default=int(os.getenv("FLIP_DESK_MAX_OPTION_SIGNALS", "3")))
+    runp.add_argument("--max-signals", type=int, default=int(os.getenv("ALPACA_PAPER_MAX_OPTION_SIGNALS", "3")))
     runp.add_argument("--max-debit", type=float, default=float(os.getenv("ALPACA_PAPER_MAX_ORDER_DEBIT", "250")))
     runp.add_argument("--submit", action="store_true")
     sub.add_parser("eod-report")
     args = parser.parse_args()
     if args.cmd == "run-iteration":
-        submit = args.submit or os.getenv("FLIP_DESK_PAPER_OPTIONS_AUTO_SUBMIT", "false").lower() == "true"
+        submit = args.submit or os.getenv("ALPACA_PAPER_OPTIONS_AUTO_SUBMIT", "false").lower() == "true"
         payload = build_iteration(args.symbols, submit=submit, max_debit=args.max_debit, max_signals=args.max_signals)
     else:
         payload = build_eod_report()

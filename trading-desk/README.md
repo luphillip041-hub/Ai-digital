@@ -96,8 +96,6 @@ Commands available to everyone in allowed Discord channels:
 !scan SPY,QQQ,NVDA,TSLA  # zero-LLM stock scanner
 !optionscan SPY,QQQ,NVDA  # options signal scanner with contract/liquidity/risk card
 !vibe TSLA              # Vibe-Trading style research bridge / analyst packet
-!paperopts SPY,QQQ      # full paper-options analysis + guarded dry-run order
-!eod                    # end-of-day paper options report
 !preflight AAPL          # budget/model check, no LLM spend
 !desk AAPL               # low-burn desk analysis
 !deskfull NVDA           # expensive full analyst stack
@@ -243,17 +241,7 @@ python scripts/options_signal_scanner.py \
 
 Outputs a full JSON scan to `runs/options_signals_latest.json` and a Discord-ready signal card to `runs/options_signal_example.md`. See `docs/options_scanner_playbook.md` for the scanner methodology.
 
-Alpaca PAPER options cycle:
-
-```bash
-# Dry-run by default: analysis + guarded staged paper order
-python scripts/paper_options_daily.py run-iteration --symbols SPY,QQQ,NVDA,TSLA,SMH,AAPL
-
-# EOD report
-python scripts/paper_options_daily.py eod-report
-```
-
-This uses only `trading-desk/.env` Alpaca paper keys and blocks submit unless explicitly enabled. See `docs/alpaca_paper_options.md`.
+Standalone Alpaca PAPER options cycle now lives outside the trade desk at `../alpaca-paper-options/`.
 
 See `trading-desk/openalice/README.md` for install/start/headless details.
 
@@ -326,7 +314,6 @@ Key upstream facts used here:
 - Discord command bot for shared server access.
 - Streamlit command-center UI for scanner/options/workspace/runs/diagnostics.
 - Vibe-Trading inspired research bridge and Research Lab view, sidecar-only.
-- Isolated Alpaca PAPER options adapter with guarded dry-run/submit flow and EOD reports.
 - Docker Compose and systemd deployment for 24/7 operation.
 - Preflight mode to estimate LLM/tool usage before spending tokens.
 - SQLite run ledger at `trading-desk/runs/desk_ledger.sqlite3`.

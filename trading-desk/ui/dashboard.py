@@ -454,59 +454,6 @@ def render_workspace(options_payload: dict[str, Any]) -> None:
 
 
 
-def render_paper_options(symbols: str) -> None:
-    st.subheader("🧾 Alpaca PAPER Options")
-    st.caption("Full market/options pass → guarded Alpaca paper dry-run → EOD report. Submit stays off unless explicitly enabled in .env.")
-    c1, c2, c3 = st.columns([2, 1, 1])
-    max_debit = c2.number_input("Max debit ($)", min_value=25.0, max_value=5000.0, value=float(os.getenv("ALPACA_PAPER_MAX_ORDER_DEBIT", "250")), step=25.0)
-    submit_enabled = os.getenv("FLIP_DESK_PAPER_OPTIONS_AUTO_SUBMIT", "false").lower() == "true"
-    c3.metric("Submit mode", "ON" if submit_enabled else "dry-run")
-    if c1.button("Run paper-options pass", use_container_width=True):
-        ok, output = run_script(
-            [
-                str(SCRIPTS / "paper_options_daily.py"),
-                "run-iteration",
-                "--symbols",
-                symbols,
-                "--max-debit",
-                str(max_debit),
-            ],
-            timeout=720,
-        )
-        if ok:
-            st.success("Paper-options pass complete")
-        else:
-            st.error(output)
-    if st.button("Build EOD paper report", use_container_width=True):
-        ok, output = run_script([str(SCRIPTS / "paper_options_daily.py"), "eod-report"], timeout=240)
-        if ok:
-            st.success("EOD report complete")
-        else:
-            st.error(output)
-    payload = read_json(RUNS / "paper_options_latest.json")
-    eod = read_json(RUNS / "paper_options_eod_latest.json")
-    if payload:
-        order = payload.get("paper_order") or {}
-        sig = payload.get("selected_signal") or {}
-        setup = sig.get("setup") or {}
-        contract = sig.get("contract") or {}
-        st.markdown("### Latest paper-options pass")
-        cols = st.columns(4)
-        cols[0].metric("Mode", payload.get("mode", "—"))
-        cols[1].metric("Selected", sig.get("symbol", "—"))
-        cols[2].metric("Signal score", sig.get("total_score", "—"))
-        cols[3].metric("Order", order.get("status", "—"))
-        st.caption(f"Setup: {setup.get('setup')} {setup.get('direction')} | Contract: {contract.get('type')} {contract.get('strike')} exp {contract.get('expiration')}")
-        if order.get("reasons"):
-            st.warning("Blocked: " + "; ".join(order.get("reasons") or []))
-        with st.expander("Latest paper report JSON", expanded=False):
-            st.json(payload)
-    else:
-        st.info("No paper-options run yet.")
-    if eod:
-        st.markdown("### Latest EOD report")
-        st.json({k: eod.get(k) for k in ["generated_at", "trade_date_et"]})
-
 def render_runs() -> None:
     st.subheader("📁 Runs, Budget & Artifacts")
     stats = ledger_stats()
@@ -568,12 +515,12 @@ def main() -> None:
         st.session_state.symbols = symbols
         view = st.radio(
             "View",
-            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Paper Options", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
+            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
             index=0,
         )
         st.divider()
         st.caption("Discord commands")
-        st.code("!scan\n!optionscan\n!vibe TSLA\n!paperopts\n!eod\n!preflight AAPL\n!desk AAPL", language="text")
+        st.code("!scan\n!optionscan\n!vibe TSLA\n!preflight AAPL\n!desk AAPL", language="text")
     stock_payload = read_json(RUNS / "ui_watchlist_scan.json")
     options_payload = read_json(RUNS / "ui_options_signals.json") or read_json(RUNS / "options_signals_latest.json")
     if view == "Home":
@@ -584,8 +531,6 @@ def main() -> None:
         render_options(symbols)
     elif view == "Research Lab":
         render_research_lab(symbols)
-    elif view == "Paper Options":
-        render_paper_options(symbols)
     elif view == "Strategy Workspace":
         render_workspace(options_payload)
     elif view == "Runs/Budget":

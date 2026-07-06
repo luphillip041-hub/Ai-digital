@@ -10,6 +10,11 @@ trading-desk/__pycache__/
 trading-desk/bot/__pycache__/
 trading-desk/scripts/__pycache__/
 trading-desk/ui/__pycache__/
+alpaca-paper-options/.env
+alpaca-paper-options/.env.local
+alpaca-paper-options/.venv/
+alpaca-paper-options/runs/
+alpaca-paper-options/scripts/__pycache__/
 
 # General
 .DS_Store

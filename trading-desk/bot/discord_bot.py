@@ -251,42 +251,6 @@ def format_vibe(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def format_paper_options(payload: dict[str, Any]) -> str:
-    selected = payload.get("selected_signal") or {}
-    setup = selected.get("setup") or {}
-    contract = selected.get("contract") or {}
-    order = payload.get("paper_order") or {}
-    lines = [
-        f"🧾 **Paper options pass** — `{payload.get('mode', 'dry_run')}`",
-        f"Selected: **{selected.get('symbol', 'n/a')}** `{setup.get('setup', 'n/a')}` `{setup.get('direction', 'n/a')}` score `{selected.get('total_score', 'n/a')}`",
-    ]
-    if contract:
-        lines.append(
-            f"Contract: `{contract.get('type')} {contract.get('strike')} {contract.get('expiration')}` "
-            f"bid/ask `{contract.get('bid')}/{contract.get('ask')}`"
-        )
-    lines.append(f"Order: `{order.get('status', 'n/a')}`")
-    if order.get("reasons"):
-        lines.append("Blocked: " + "; ".join(order.get("reasons") or []))
-    if payload.get("paths", {}).get("report_md"):
-        lines.append(f"report `{payload['paths']['report_md']}`")
-    return "\n".join(lines)
-
-
-def format_eod_report(payload: dict[str, Any]) -> str:
-    latest = payload.get("latest_iteration") or {}
-    alpaca = payload.get("alpaca") or {}
-    account = (alpaca.get("account") or {}).get("account") or {}
-    positions = (alpaca.get("positions") or {}).get("positions") or []
-    orders = (alpaca.get("orders") or {}).get("orders") or []
-    lines = [
-        f"🌙 **EOD paper options report** — `{payload.get('trade_date_et')}`",
-        f"Account `{account.get('status', 'n/a')}` | BP `{account.get('buying_power', 'n/a')}` | options BP `{account.get('options_buying_power', 'n/a')}`",
-        f"Latest run `{latest.get('run_id', 'n/a')}` order `{(latest.get('paper_order') or {}).get('status', 'n/a')}`",
-        f"Open positions `{len(positions)}` | open orders `{len(orders)}`",
-    ]
-    return "\n".join(lines)
-
 def chunk_message(text: str) -> list[str]:
     if len(text) <= MAX_DISCORD_CHARS:
         return [text]
@@ -325,8 +289,6 @@ HELP = f"""🤖 **Flip Desk Commands**
 `{PREFIX}scan [symbols]` — zero-LLM stock scanner, e.g. `{PREFIX}scan SPY,QQQ,NVDA,TSLA`
 `{PREFIX}optionscan [symbols]` — options signal scanner with contract/liquidity/risk card
 `{PREFIX}vibe TICKER` — Vibe-Trading style research bridge / analyst packet
-`{PREFIX}paperopts [symbols]` — full paper options analysis + dry-run staged order
-`{PREFIX}eod` — end-of-day paper options report
 `{PREFIX}preflight TICKER` — budget/model check, no LLM spend
 `{PREFIX}desk TICKER` — low-burn analysis after preflight
 `{PREFIX}deskfull TICKER` — expensive full analyst stack
@@ -460,29 +422,6 @@ async def on_message(message: discord.Message) -> None:
             await thinking.edit(content=format_vibe(_read_json(out))[:MAX_DISCORD_CHARS])
             return
 
-        if cmd == "paperopts":
-            symbols = args[0] if args else DEFAULT_SYMBOLS
-            thinking = await message.reply("🧾 running paper-options desk pass — scanner + option signal + guarded dry-run…", mention_author=False)
-            result = await run_cmd(
-                [PYTHON, "scripts/paper_options_daily.py", "run-iteration", "--symbols", symbols],
-                timeout=SCAN_TIMEOUT_SECONDS * 5,
-            )
-            if result.exit_code != 0:
-                await thinking.edit(content=f"❌ paper options pass failed\n```{(result.stderr or result.stdout)[-1500:]}```")
-                return
-            payload = json.loads(result.stdout)
-            await thinking.edit(content=format_paper_options(payload)[:MAX_DISCORD_CHARS])
-            return
-
-        if cmd == "eod":
-            thinking = await message.reply("🌙 building EOD paper-options report…", mention_author=False)
-            result = await run_cmd([PYTHON, "scripts/paper_options_daily.py", "eod-report"], timeout=SCAN_TIMEOUT_SECONDS * 2)
-            if result.exit_code != 0:
-                await thinking.edit(content=f"❌ EOD report failed\n```{(result.stderr or result.stdout)[-1500:]}```")
-                return
-            payload = json.loads(result.stdout)
-            await thinking.edit(content=format_eod_report(payload)[:MAX_DISCORD_CHARS])
-            return
 
         if cmd in {"preflight", "desk", "deskfull"}:
             if not args:

@@ -1,0 +1,9 @@
+services:
+  alpaca-paper-options:
+    build: .
+    container_name: flip-alpaca-paper-options
+    env_file:
+      - .env
+    volumes:
+      - ./runs:/app/alpaca-paper-options/runs
+    command: ["python", "scripts/paper_options_daily.py", "eod-report"]
