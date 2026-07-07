@@ -97,6 +97,7 @@ Commands available to everyone in allowed Discord channels:
 !optionscan SPY,QQQ,NVDA  # options signal scanner with contract/liquidity/risk card
 !vibe TSLA              # Vibe-Trading style research bridge / analyst packet
 !paperopts SPY,QQQ      # run standalone Alpaca PAPER options dry-run
+!outcomes               # track saved signals vs current price/target/stop
 !eod                    # standalone Alpaca PAPER options EOD report
 !preflight AAPL          # budget/model check, no LLM spend
 !desk AAPL               # low-burn desk analysis
@@ -150,6 +151,7 @@ The Streamlit UI gives the desk a dark, glassy command-center front end:
 - options signal cards
 - Vibe-Trading inspired Research Lab
 - Paper Options control panel for the standalone Alpaca PAPER service
+- Signal Outcomes tracker for target/stop accountability
 - active strategy workspace
 - payoff sketch for selected contract
 - run artifacts / budget ledger
@@ -241,6 +243,13 @@ Standalone Alpaca PAPER options service from desk wrappers:
 cd /root/flip/projects/trading-desk/Ai-digital/alpaca-paper-options
 python scripts/paper_options_daily.py run-iteration --symbols SPY,QQQ,NVDA,TSLA
 python scripts/paper_options_daily.py eod-report
+```
+
+Signal outcome tracker:
+
+```bash
+cd /root/flip/projects/trading-desk/Ai-digital/trading-desk
+python scripts/signal_outcome_tracker.py --limit 50
 ```
 
 Options signal scanner:

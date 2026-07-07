@@ -291,6 +291,28 @@ def format_eod_report(payload: dict[str, Any]) -> str:
     ]
     return "\n".join(lines)
 
+
+def format_outcomes(payload: dict[str, Any]) -> str:
+    summary = payload.get("summary") or {}
+    rows = payload.get("outcomes") or []
+    lines = [
+        "📈 **Signal outcomes** — zero LLM tracker",
+        f"Tracked `{summary.get('tracked', 0)}` | target `{summary.get('target_hit', 0)}` | stop `{summary.get('stop_hit', 0)}` | working `{summary.get('working', 0)}` | against `{summary.get('against', 0)}` | avg `{summary.get('avg_move_pct')}`%",
+    ]
+    for row in rows[:6]:
+        notes = row.get("notes") or []
+        note_txt = f" — {', '.join(notes[:2])}" if notes else ""
+        move = row.get("move_pct")
+        move_txt = "n/a" if move is None else f"{move:+.2f}%"
+        prog = row.get("progress_to_target_pct")
+        prog_txt = "n/a" if prog is None else f"{prog:.0f}%"
+        lines.append(
+            f"{row.get('risk_grade')} **{row.get('symbol')}** {move_txt} | progress `{prog_txt}` | "
+            f"entry `{row.get('entry')}` now `{row.get('current')}` target `{row.get('target')}` stop `{row.get('stop')}`{note_txt}"
+        )
+    lines.append("saved `runs/signal_outcomes_latest.json`")
+    return "\n".join(lines)
+
 def chunk_message(text: str) -> list[str]:
     if len(text) <= MAX_DISCORD_CHARS:
         return [text]
@@ -330,6 +352,7 @@ HELP = f"""🤖 **Flip Desk Commands**
 `{PREFIX}optionscan [symbols]` — options signal scanner with contract/liquidity/risk card
 `{PREFIX}vibe TICKER` — Vibe-Trading style research bridge / analyst packet
 `{PREFIX}paperopts [symbols]` — launch standalone Alpaca paper-options dry-run
+`{PREFIX}outcomes` — track saved signals vs target/stop/current price
 `{PREFIX}eod` — standalone paper-options EOD report
 `{PREFIX}preflight TICKER` — budget/model check, no LLM spend
 `{PREFIX}desk TICKER` — low-burn analysis after preflight
@@ -462,6 +485,21 @@ async def on_message(message: discord.Message) -> None:
                 await thinking.edit(content=f"❌ vibe bridge failed\n```{(result.stderr or result.stdout)[-1500:]}```")
                 return
             await thinking.edit(content=format_vibe(_read_json(out))[:MAX_DISCORD_CHARS])
+            return
+
+        if cmd in {"outcomes", "outcome"}:
+            out = RUNS_DIR / "signal_outcomes_latest.json"
+            md_out = RUNS_DIR / "signal_outcomes_latest.md"
+            thinking = await message.reply("📈 refreshing signal outcome tracker…", mention_author=False)
+            result = await run_cmd(
+                [PYTHON, "scripts/signal_outcome_tracker.py", "--limit", os.getenv("FLIP_DESK_OUTCOME_LIMIT", "50"), "--out", str(out), "--markdown-out", str(md_out)],
+                timeout=SCAN_TIMEOUT_SECONDS * 2,
+            )
+            if result.exit_code != 0:
+                await thinking.edit(content=f"❌ outcomes failed\n```{(result.stderr or result.stdout)[-1500:]}```")
+                return
+            payload = json.loads(result.stdout)
+            await thinking.edit(content=format_outcomes(payload)[:MAX_DISCORD_CHARS])
             return
 
         if cmd == "paperopts":

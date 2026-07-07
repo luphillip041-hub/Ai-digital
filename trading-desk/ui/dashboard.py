@@ -247,12 +247,13 @@ def render_launchpad(stock_payload: dict[str, Any], options_payload: dict[str, A
     st.write("")
     render_top_metrics(stock_payload, options_payload)
     st.write("")
-    cards = st.columns(6)
+    cards = st.columns(7)
     copy = [
         ("📡 Live Scanner", "Run broad symbol triage before spending model calls."),
         ("🎯 Options Signals", "Contract-quality cards with target/stop/management."),
         ("🧬 Research Lab", "Vibe-Trading style analyst packets without replacing desk rules."),
         ("🧾 Paper Options", "Launch/review the standalone Alpaca paper-options service."),
+        ("📈 Outcomes", "Track saved signals against current price, targets, and stops."),
         ("🧠 Strategy Workspace", "Inspect active signal, payoff curve, levels, and risk."),
         ("🛠 Diagnostics", "Artifacts, ledgers, environment status, and docs."),
     ]
@@ -416,6 +417,87 @@ def render_research_lab(symbols: str) -> None:
         st.json(opt)
     with st.expander("Full research JSON", expanded=False):
         st.json(payload)
+    if md.exists():
+        with st.expander("Markdown report", expanded=False):
+            st.code(md.read_text(encoding="utf-8")[:6000], language="markdown")
+
+
+def render_outcomes() -> None:
+    st.subheader("📈 Signal Outcomes")
+    st.caption("Zero-LLM accountability layer: tracks saved option-signal artifacts against current underlying prices, targets, and stops.")
+    c1, c2 = st.columns([2, 1])
+    limit = c2.slider("Signals to track", 5, 100, 50, 5)
+    out = RUNS / "signal_outcomes_latest.json"
+    md = RUNS / "signal_outcomes_latest.md"
+    if c1.button("Refresh outcome tracker", use_container_width=True):
+        ok, output = run_script(
+            [
+                str(SCRIPTS / "signal_outcome_tracker.py"),
+                "--limit",
+                str(limit),
+                "--out",
+                str(out),
+                "--markdown-out",
+                str(md),
+            ],
+            timeout=360,
+        )
+        st.success("Outcome tracker refreshed") if ok else st.error(output)
+    payload = read_json(out)
+    if not payload:
+        st.info("Refresh the tracker to populate signal outcomes.")
+        return
+    summary = payload.get("summary") or {}
+    cols = st.columns(5)
+    cols[0].metric("Tracked", summary.get("tracked", 0))
+    cols[1].metric("Target hits", summary.get("target_hit", 0))
+    cols[2].metric("Stops", summary.get("stop_hit", 0))
+    cols[3].metric("Working", summary.get("working", 0))
+    avg = summary.get("avg_move_pct")
+    cols[4].metric("Avg move", "—" if avg is None else f"{avg:+.2f}%")
+    st.caption(f"Generated: {parse_iso(payload.get('generated_at'))} · {payload.get('data_source', '')}")
+    rows = payload.get("outcomes") or []
+    if not rows:
+        st.warning("No saved signals found yet. Run options scanner first.")
+        return
+    df = dataframe_from(rows)
+    show_cols = [
+        "symbol",
+        "risk_grade",
+        "status",
+        "move_pct",
+        "progress_to_target_pct",
+        "distance_to_stop_pct",
+        "entry",
+        "current",
+        "target",
+        "stop",
+        "setup",
+        "direction",
+        "score",
+        "age_days",
+        "source_file",
+    ]
+    show_cols = [c for c in show_cols if c in df.columns]
+    st.dataframe(df[show_cols], hide_index=True, use_container_width=True)
+    first = rows[0]
+    st.markdown("### Top tracked signal")
+    st.markdown(
+        f"""
+<div class="signal-card">
+  <div class="subtle">{first.get('risk_grade')} · {first.get('status')} · age {first.get('age_days')}d</div>
+  <h3>{first.get('symbol')} — {first.get('setup')}</h3>
+  <div class="pill">Move {first.get('move_pct')}%</div>
+  <div class="pill">Entry {first.get('entry')}</div>
+  <div class="pill">Current {first.get('current')}</div>
+  <div class="pill">Target {first.get('target')}</div>
+  <div class="pill">Stop {first.get('stop')}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    if first.get("notes"):
+        st.warning("Notes: " + "; ".join(first.get("notes") or []))
     if md.exists():
         with st.expander("Markdown report", expanded=False):
             st.code(md.read_text(encoding="utf-8")[:6000], language="markdown")
@@ -589,12 +671,12 @@ def main() -> None:
         st.session_state.symbols = symbols
         view = st.radio(
             "View",
-            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Paper Options", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
+            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Paper Options", "Outcomes", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
             index=0,
         )
         st.divider()
         st.caption("Discord commands")
-        st.code("!scan\n!optionscan\n!vibe TSLA\n!paperopts\n!eod\n!preflight AAPL\n!desk AAPL", language="text")
+        st.code("!scan\n!optionscan\n!vibe TSLA\n!paperopts\n!outcomes\n!eod\n!preflight AAPL\n!desk AAPL", language="text")
     stock_payload = read_json(RUNS / "ui_watchlist_scan.json")
     options_payload = read_json(RUNS / "ui_options_signals.json") or read_json(RUNS / "options_signals_latest.json")
     if view == "Home":
@@ -607,6 +689,8 @@ def main() -> None:
         render_research_lab(symbols)
     elif view == "Paper Options":
         render_paper_options(symbols)
+    elif view == "Outcomes":
+        render_outcomes()
     elif view == "Strategy Workspace":
         render_workspace(options_payload)
     elif view == "Runs/Budget":
