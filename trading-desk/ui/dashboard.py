@@ -247,13 +247,14 @@ def render_launchpad(stock_payload: dict[str, Any], options_payload: dict[str, A
     st.write("")
     render_top_metrics(stock_payload, options_payload)
     st.write("")
-    cards = st.columns(7)
+    cards = st.columns(8)
     copy = [
         ("📡 Live Scanner", "Run broad symbol triage before spending model calls."),
         ("🎯 Options Signals", "Contract-quality cards with target/stop/management."),
         ("🧬 Research Lab", "Vibe-Trading style analyst packets without replacing desk rules."),
         ("🧾 Paper Options", "Launch/review the standalone Alpaca paper-options service."),
         ("📈 Outcomes", "Track saved signals against current price, targets, and stops."),
+        ("🗒️ Run Card", "One operator view: scanner, options, outcomes, Vibe, paper status."),
         ("🧠 Strategy Workspace", "Inspect active signal, payoff curve, levels, and risk."),
         ("🛠 Diagnostics", "Artifacts, ledgers, environment status, and docs."),
     ]
@@ -502,6 +503,80 @@ def render_outcomes() -> None:
         with st.expander("Markdown report", expanded=False):
             st.code(md.read_text(encoding="utf-8")[:6000], language="markdown")
 
+def render_run_card(symbols: str) -> None:
+    st.subheader("🗒️ Daily Run Card")
+    st.caption("Zero-LLM operator brief: scanner + options + outcomes + Vibe packets + standalone paper-options status.")
+    c1, c2, c3 = st.columns([1.4, 1, 1])
+    refresh = c2.toggle("Refresh scanner/outcomes first", value=True)
+    include_paper = c3.toggle("Refresh paper account metadata", value=False)
+    out = RUNS / "daily_run_card_latest.json"
+    md = RUNS / "daily_run_card_latest.md"
+    if c1.button("Build run card", use_container_width=True):
+        args = [
+            str(SCRIPTS / "daily_run_card.py"),
+            "--symbols",
+            symbols,
+            "--out",
+            str(out),
+            "--markdown-out",
+            str(md),
+        ]
+        if refresh:
+            args.append("--refresh")
+        if include_paper:
+            args.append("--include-paper-account-refresh")
+        ok, output = run_script(args, timeout=600)
+        st.success("Run card built") if ok else st.error(output)
+
+    payload = read_json(out)
+    if not payload:
+        st.info("Build the run card to populate the operator brief.")
+        return
+    st.caption(f"Generated: {parse_iso(payload.get('generated_at'))} · {payload.get('mode', '')}")
+    actions = payload.get("action_queue") or []
+    st.markdown("### Action queue")
+    if actions:
+        for item in actions:
+            priority = item.get("priority", "LOW")
+            icon = "🔴" if priority == "HIGH" else "🟡" if priority == "MED" else "⚪"
+            st.markdown(f"{icon} **{priority} — {item.get('title')}**  ")
+            st.caption(f"{item.get('detail')} · source: {item.get('source')}")
+    else:
+        st.info("No action items generated.")
+
+    scanner = payload.get("scanner") or {}
+    options = payload.get("options") or {}
+    outcomes = payload.get("outcomes") or {}
+    paper = payload.get("paper") or {}
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Scanner rows", len(scanner.get("top") or []))
+    c2.metric("Option signals", len(options.get("signals") or []))
+    c3.metric("Tracked outcomes", (outcomes.get("summary") or {}).get("tracked", 0))
+    c4.metric("Paper order", paper.get("order_status", "—"))
+
+    tabs = st.tabs(["Scanner", "Options", "Outcomes", "Paper", "Vibe", "Markdown"])
+    with tabs[0]:
+        df = dataframe_from(scanner.get("top") or [])
+        st.dataframe(df, hide_index=True, use_container_width=True) if not df.empty else st.info("No scanner rows.")
+    with tabs[1]:
+        df = dataframe_from(options.get("signals") or [])
+        st.dataframe(df, hide_index=True, use_container_width=True) if not df.empty else st.info("No option signals.")
+    with tabs[2]:
+        st.json(outcomes.get("summary") or {})
+        df = dataframe_from(outcomes.get("watch") or [])
+        st.dataframe(df, hide_index=True, use_container_width=True) if not df.empty else st.info("No outcomes.")
+    with tabs[3]:
+        st.json(paper)
+    with tabs[4]:
+        df = dataframe_from(payload.get("vibe_packets") or [])
+        st.dataframe(df, hide_index=True, use_container_width=True) if not df.empty else st.info("No Vibe packets yet.")
+    with tabs[5]:
+        if md.exists():
+            st.code(md.read_text(encoding="utf-8")[:9000], language="markdown")
+        else:
+            st.info("Markdown report not found yet.")
+
+
 def render_workspace(options_payload: dict[str, Any]) -> None:
     st.subheader("🧠 Strategy Workspace")
     signals = options_payload.get("signals") or []
@@ -671,12 +746,12 @@ def main() -> None:
         st.session_state.symbols = symbols
         view = st.radio(
             "View",
-            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Paper Options", "Outcomes", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
+            ["Home", "Live Scanner", "Options Signals", "Research Lab", "Paper Options", "Outcomes", "Run Card", "Strategy Workspace", "Runs/Budget", "Diagnostics"],
             index=0,
         )
         st.divider()
         st.caption("Discord commands")
-        st.code("!scan\n!optionscan\n!vibe TSLA\n!paperopts\n!outcomes\n!eod\n!preflight AAPL\n!desk AAPL", language="text")
+        st.code("!scan\n!optionscan\n!vibe TSLA\n!paperopts\n!outcomes\n!runcard\n!eod\n!preflight AAPL\n!desk AAPL", language="text")
     stock_payload = read_json(RUNS / "ui_watchlist_scan.json")
     options_payload = read_json(RUNS / "ui_options_signals.json") or read_json(RUNS / "options_signals_latest.json")
     if view == "Home":
@@ -691,6 +766,8 @@ def main() -> None:
         render_paper_options(symbols)
     elif view == "Outcomes":
         render_outcomes()
+    elif view == "Run Card":
+        render_run_card(symbols)
     elif view == "Strategy Workspace":
         render_workspace(options_payload)
     elif view == "Runs/Budget":

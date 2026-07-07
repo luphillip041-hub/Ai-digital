@@ -313,6 +313,35 @@ def format_outcomes(payload: dict[str, Any]) -> str:
     lines.append("saved `runs/signal_outcomes_latest.json`")
     return "\n".join(lines)
 
+
+def format_run_card(payload: dict[str, Any]) -> str:
+    actions = payload.get("action_queue") or []
+    scanner = payload.get("scanner") or {}
+    options = payload.get("options") or {}
+    outcomes = payload.get("outcomes") or {}
+    paper = payload.get("paper") or {}
+    out_summary = outcomes.get("summary") or {}
+    lines = [
+        "🗒️ **Daily desk run card** — zero LLM operator brief",
+        f"Scanner `{len(scanner.get('top') or [])}` | options `{len(options.get('signals') or [])}` | outcomes `{out_summary.get('tracked', 0)}` | paper order `{paper.get('order_status', 'n/a')}`",
+        "",
+        "**Action queue**",
+    ]
+    for item in actions[:6]:
+        icon = "🔴" if item.get("priority") == "HIGH" else "🟡" if item.get("priority") == "MED" else "⚪"
+        lines.append(f"{icon} **{item.get('priority')}** {item.get('title')} — {item.get('detail')}")
+    if not actions:
+        lines.append("No action items generated.")
+    top_opt = (options.get("signals") or [])[:1]
+    if top_opt:
+        s = top_opt[0]
+        lines.append(f"\nTop option: **{s.get('symbol')}** {s.get('setup')} {s.get('direction')} score `{s.get('score')}` | `{s.get('contract')}`")
+    if paper.get("blocked_reasons"):
+        lines.append("Paper blocked: " + "; ".join(paper.get("blocked_reasons") or []))
+    lines.append("saved `runs/daily_run_card_latest.json`")
+    return "\n".join(lines)
+
+
 def chunk_message(text: str) -> list[str]:
     if len(text) <= MAX_DISCORD_CHARS:
         return [text]
@@ -353,6 +382,7 @@ HELP = f"""🤖 **Flip Desk Commands**
 `{PREFIX}vibe TICKER` — Vibe-Trading style research bridge / analyst packet
 `{PREFIX}paperopts [symbols]` — launch standalone Alpaca paper-options dry-run
 `{PREFIX}outcomes` — track saved signals vs target/stop/current price
+`{PREFIX}runcard [symbols]` — daily operator brief across scanner/options/outcomes/Vibe/paper
 `{PREFIX}eod` — standalone paper-options EOD report
 `{PREFIX}preflight TICKER` — budget/model check, no LLM spend
 `{PREFIX}desk TICKER` — low-burn analysis after preflight
@@ -500,6 +530,22 @@ async def on_message(message: discord.Message) -> None:
                 return
             payload = json.loads(result.stdout)
             await thinking.edit(content=format_outcomes(payload)[:MAX_DISCORD_CHARS])
+            return
+
+        if cmd in {"runcard", "run-card", "card"}:
+            symbols = args[0] if args else DEFAULT_SYMBOLS
+            out = RUNS_DIR / "daily_run_card_latest.json"
+            md_out = RUNS_DIR / "daily_run_card_latest.md"
+            thinking = await message.reply("🗒️ building desk run card — scanner + outcomes + paper status…", mention_author=False)
+            result = await run_cmd(
+                [PYTHON, "scripts/daily_run_card.py", "--symbols", symbols, "--refresh", "--out", str(out), "--markdown-out", str(md_out)],
+                timeout=SCAN_TIMEOUT_SECONDS * 4,
+            )
+            if result.exit_code != 0:
+                await thinking.edit(content=f"❌ run card failed\n```{(result.stderr or result.stdout)[-1500:]}```")
+                return
+            payload = json.loads(result.stdout)
+            await thinking.edit(content=format_run_card(payload)[:MAX_DISCORD_CHARS])
             return
 
         if cmd == "paperopts":

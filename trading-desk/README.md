@@ -98,6 +98,7 @@ Commands available to everyone in allowed Discord channels:
 !vibe TSLA              # Vibe-Trading style research bridge / analyst packet
 !paperopts SPY,QQQ      # run standalone Alpaca PAPER options dry-run
 !outcomes               # track saved signals vs current price/target/stop
+!runcard                # daily operator brief: scanner/options/outcomes/Vibe/paper
 !eod                    # standalone Alpaca PAPER options EOD report
 !preflight AAPL          # budget/model check, no LLM spend
 !desk AAPL               # low-burn desk analysis
@@ -152,6 +153,7 @@ The Streamlit UI gives the desk a dark, glassy command-center front end:
 - Vibe-Trading inspired Research Lab
 - Paper Options control panel for the standalone Alpaca PAPER service
 - Signal Outcomes tracker for target/stop accountability
+- Daily Run Card that consolidates scanner, options, outcomes, Vibe packets, and paper-service status
 - active strategy workspace
 - payoff sketch for selected contract
 - run artifacts / budget ledger
